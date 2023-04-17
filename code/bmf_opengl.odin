@@ -1,11 +1,21 @@
 package main
 import gl "vendor:OpenGL"
 import os "core:os"
+import mem "core:mem"
+
+foreign import opengl32 "system:Opengl32.lib"
+
+foreign opengl32{
+	glTexEnvi::proc(target:u32 , pname:u32, param:i32)---
+	glTexImage2D::proc(target:u32, level:i32, internalformat:i32, width:i32, height:i32, border:i32, format:i32, type:u32, pixels:rawptr)---
+}
+
 
 OpenglContext::struct{
-	text_handle:u32,
+	tex_handle:u32,
 	vbo        :u32,
 	vao        :u32,
+	ebo        :u32,
 }
 
 OpenglInfo::struct{
@@ -14,7 +24,7 @@ OpenglInfo::struct{
 	renderer: string,
 	version: string,
 	shading_version: string,
-	extentions: string,
+	extensions: string,
 
 	GL_EXT_texture_sRGB:b8,
 	GL_EXT_framebuffer_sRGB:b8,
@@ -32,7 +42,7 @@ OpenglConfig::struct{
 	use_light_local:b8,
 }
 
-opengl_get_info::proc(){
+opengl_get_info::proc()->OpenglInfo{
 	using gl
 	result:OpenglInfo  = {};
 	result.modern_context = true;
@@ -41,32 +51,13 @@ opengl_get_info::proc(){
 	result.version  = cast(string)GetString(VERSION);
 	result.shading_version = cast(string)GetString(SHADING_LANGUAGE_VERSION);
 
-  /*
 	if(result.modern_context){
 	}else{
 		result.shading_version = "(none)";
 	}
-	result.extensions = cast(string)GetString(GL_EXTENSIONS);
-  char* at = result.extensions;
-  while(*at){
-    while(is_whitespace(*at)) {++at;}
-    char* end = at;
-    //NOTE(samrat) Chopping up the string
-    while(*end && !is_whitespace(*end)){++end;}
-    U32 count = end - at;
-
-    if(0){}
-    else if(strings_are_equal(count, at, "GL_EXT_texture_sRGB")){
-      result.GL_EXT_texture_sRGB=true;
-    }else if(strings_are_equal(count, at, "GL_EXT_framebuffer_sRGB")){
-      result.GL_EXT_framebuffer_sRGB=true;
-    }
-    at = end;
-  }
-  */
+	result.extensions = cast(string)GetString(EXTENSIONS);
+	return result
 }
-
-
 
 opengl_create_program::proc(vertex_shader_code:cstring , fragment_shader_code:cstring)->u32{
 	vertex_shader_code := vertex_shader_code
@@ -100,16 +91,17 @@ opengl_create_program::proc(vertex_shader_code:cstring , fragment_shader_code:cs
 		GetShaderInfoLog(fragment_shader_id, 255, &ignored, fragment_errors);
 		GetProgramInfoLog(program_id, 255, &ignored, program_errors);
 		*/
+		assert(1==0)
 	}
 	return program_id;
 }
 
 opengl_init::proc(modern_context:b8){
 	using gl
-	opengl_get_info()
+	info:=opengl_get_info()
 	opengl_config.default_internal_text_format = SRGB8_ALPHA8
 	Enable(FRAMEBUFFER_SRGB)
-	//TexEnvi(TEXTURE_ENV, TEXTURE_ENV_MODE_GL_MODULATE)
+	//TexEnvi(TEXTURE_ENV, TEXTURE_ENV_MODE, MODULATE)
 
 	frag,_ := os.read_entire_file_from_filename("frag.glsl")
 	vert,_ := os.read_entire_file_from_filename("vert.glsl")
@@ -124,23 +116,125 @@ opengl_init::proc(modern_context:b8){
 	Enable(BLEND);
 	BlendFunc(ONE, ONE_MINUS_SRC_ALPHA);
 	BlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
-	LineWidth(1);
+	//LineWidth(1);
 	UseProgram(opengl_config.basic_light_program)
 
 
 	//TODO: Put this in game_render proc
 	/*
-    a:f32 = 2.0f / cast(f32)buffer->width;
-    b:f32 = 2.0f / cast(f32)buffer->height;
-
-	proj:[]f32 = {
-		a, 0, 0, 0,
-		0, b, 0, 0,
-		0, 0, 1, 0,
-		-1, -1, 0, 1,
-	};
-	UniformMatrix4fv(opengl_config.transform_id, 1, GL_FALSE, &proj[0]);
 	*/
+}
+
+
+opengl_init_texture::proc(gl_context: ^OpenglContext, min_p:v2_f32 , max_p:v2_f32 , color:v4,  width:i32, height:i32, image:^LoadedBitmap = nil){
+
+	using gl
+
+  vertices:[]f32 = {
+    max_p.x,  max_p.y, 0.0,   0.0, 0.0, color.r, color.g, color.b, color.a, // top right
+    max_p.x,  min_p.y, 0.0,   0.0, 1.0, color.r, color.g, color.b, color.a, // bottom right
+    min_p.x,  min_p.y, 0.0,   1.0, 1.0, color.r, color.g, color.b, color.a, // bottom left
+    min_p.x,  max_p.y, 0.0,   1.0, 0.0, color.r, color.g, color.b, color.a, // top left 
+  };
+
+  GenVertexArrays(1, &gl_context.vao);
+  GenBuffers(1, &gl_context.vbo);
+  GenBuffers(1, &gl_context.ebo);
+
+  if(image != nil){
+    GenTextures(1, &gl_context.tex_handle);
+    BindTexture(TEXTURE_2D, gl_context.tex_handle);
+    TexImage2D(TEXTURE_2D, 0, RGBA, width, height, 0, RGBA, UNSIGNED_BYTE, &image.pixels[0]);
+
+    TexParameteri(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR);
+    TexParameteri(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR);    
+    TexParameteri(TEXTURE_2D, TEXTURE_WRAP_S, CLAMP);
+    TexParameteri(TEXTURE_2D, TEXTURE_WRAP_T, CLAMP);    
+    //TexEnvi(TEXTURE_ENV, TEXTURE_ENV_MODE, MODULATE);
+
+  }
+
+  indices:[]i32={
+    0, 1, 3, //First triangle
+    1, 2, 3  //Second triangle
+  };
+  BindVertexArray(gl_context.vao);
+  BindBuffer(ARRAY_BUFFER, gl_context.vbo);
+  BufferData(ARRAY_BUFFER, len(vertices) * size_of(f32), raw_data(vertices), STATIC_DRAW);
+  BindBuffer(ELEMENT_ARRAY_BUFFER, gl_context.ebo);
+  BufferData(ELEMENT_ARRAY_BUFFER, len(indices) * size_of(i32), raw_data(indices), STATIC_DRAW);
+
+  EnableVertexAttribArray(0);
+  EnableVertexAttribArray(1);
+  EnableVertexAttribArray(2);
+  VertexAttribPointer(1, 2, FLOAT, TRUE, 9 * size_of(f32), (3 * size_of(f32)));
+  VertexAttribPointer(0, 3, FLOAT, TRUE, 9 * size_of(f32), uintptr(rawptr((nil))));
+  VertexAttribPointer(2, 4, FLOAT, TRUE, 9 * size_of(f32), (5 * size_of(f32))); 
+}
+
+
+opengl_update_vertex_data::proc(gl_context:^OpenglContext , min_p:v2_f32 , max_p:v2_f32 , color:v4 = v4{-1,-1,-1,-1}){
+
+	using gl
+  BindVertexArray(gl_context.vao);
+  BindBuffer(ARRAY_BUFFER, gl_context.vbo);
+
+   top_right    :v2_f32= v2_f32{max_p.x, max_p.y};
+   bottom_right :v2_f32= v2_f32{max_p.x, min_p.y};
+   bottom_left  :v2_f32= v2_f32{min_p.x, min_p.y};
+   top_left     :v2_f32= v2_f32{min_p.x, max_p.y};
+
+   /*
+  BufferSubData(ARRAY_BUFFER, 0, 2 * size_of(f32), rawptr(&top_right[0]));
+  BufferSubData(ARRAY_BUFFER, 1 * 9 * size_of(f32), 2 * size_of(f32), rawptr(&bottom_right[0]));
+  BufferSubData(ARRAY_BUFFER, 2 * 9 * size_of(f32), 2 * size_of(f32), rawptr(&bottom_left[0]));
+  BufferSubData(ARRAY_BUFFER, 3 * 9 * size_of(f32), 2 * size_of(f32), rawptr(&top_left[0]));
+  */
+
+  color_mat:[4]f32= {color.r, color.g, color.b, color.a}
+
+    BindTexture(TEXTURE_2D, gl_context.tex_handle);
+  if(color.r == -1){
+  }else{
+  	/*
+    BufferSubData(ARRAY_BUFFER, 0 * 9 * size_of(f32) + 5*size_of(f32), 4 * size_of(f32), &color_mat[0]);
+    BufferSubData(ARRAY_BUFFER, 1 * 9 * size_of(f32) + 5*size_of(f32), 4 * size_of(f32), &color_mat[0]);
+    BufferSubData(ARRAY_BUFFER, 2 * 9 * size_of(f32) + 5*size_of(f32), 4 * size_of(f32), &color_mat[0]);
+    BufferSubData(ARRAY_BUFFER, 3 * 9 * size_of(f32) + 5*size_of(f32), 4 * size_of(f32), &color_mat[0]);
+    */
+  }
+}
+
+//All of the int arguements is in pixels
+opengl_bitmap::proc(image:^LoadedBitmap, min_x:f32, min_y:f32 , width:f32 , height:f32){
+	using gl
+  max_x  := min_x + width;
+  max_y  := min_y + height;
+
+  //The coordinates are always the same just change the position
+  if(image.gl_context.tex_handle == 0){
+
+    //If it is a font that i processed using asset_builder.cpp
+    //TODO: find different way to process and render font
+    if(image.width <=1.0 || image.height <= 1.0){
+
+      //Calculate width and height
+      assert(1 == 0)
+
+      //width  := image.pitch / BITMAP_BYTES_PER_PIXEL;
+      //height := image.total_size/image.pitch;
+
+      //opengl_init_texture(&image.gl_context, v2_f32{min_x, min_y}, v2_f32{max_x, max_y}, v4{0,0,0,0}, width, height, image);
+    }else{
+
+      opengl_init_texture(&image.gl_context, v2_f32{min_x, min_y}, v2_f32{max_x, max_y}, v4{1,1,1,1}, image.width, image.height, image);
+    }
+      
+  }else{
+    opengl_update_vertex_data(&image.gl_context, v2_f32{min_x, min_y}, v2_f32{max_x, max_y});
+  }
+  DrawElements(TRIANGLES, 6, UNSIGNED_INT, rawptr((nil)));
+  //DrawArrays(TRIANGLE_STRIP,0,4)
 }
 
 

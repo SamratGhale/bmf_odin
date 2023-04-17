@@ -29,6 +29,12 @@ win32_get_seconds_elapsed::proc(start:win32.LARGE_INTEGER , end:win32.LARGE_INTE
 	return
 }
 
+resize_buffer::proc(buffer:^OffscreenBuffer, width:i32, height:i32) {
+  buffer.width = width;
+  buffer.height = height;
+  buffer.bytes_per_pixel = 4;
+  buffer.pitch = width * buffer.bytes_per_pixel;
+}
 
 window_callback:: proc(window: win32.HWND , message: win32.UINT , WParam:win32.WPARAM , LParam:win32.LPARAM )->win32.LRESULT{
 	using win32
@@ -37,10 +43,12 @@ window_callback:: proc(window: win32.HWND , message: win32.UINT , WParam:win32.W
 
 	switch message{
 		case WM_PAINT:{
+
+			width, height := get_window_dimention(window)
+			resize_buffer(&back_buffer, width, height)
 			paint:PAINTSTRUCT
 			hdc:HDC=BeginPaint(window, &paint)
-			width, height := get_window_dimention(window)
-			display_buffer_in_window(&back_buffer, hdc, width, height)
+			//display_buffer_in_window(&back_buffer, hdc, width, height)
 			EndPaint(window, &paint)
 		}
 		case WM_QUIT:
@@ -167,8 +175,6 @@ gl_set_proc_address :: proc(p: rawptr, name: cstring) {
 
 win32_init_opengl::proc(window:win32.HWND ){
 	using win32
-
-
 	window_dc :HDC= win32.GetDC(window);
 
 	desired_pixel_format:PIXELFORMATDESCRIPTOR = {};
@@ -206,19 +212,15 @@ win32_init_opengl::proc(window:win32.HWND ){
 		modern_glrc:HGLRC = wglCreateContextAttribsARB(window_dc, share_context, &attribs[0])
 
 		gl.load_up_to(3, 2, gl_set_proc_address);
-
-  		//gl_set_proc_address(gl.CreateShader, "glCreateShader")
-
-  		if modern_glrc != nil{
-  			if bool(wglMakeCurrent(window_dc, modern_glrc)){
-  				modern_context = true
-  				wglDeleteContext(opengl_rc)
-  				opengl_rc = modern_glrc
-  			}
-  		}
-  		opengl_init(modern_context)
-  		wglSwapIntervalEXT(1)
-		//((BOOL(WINAPI*)(int))wglGetProcAddress("wglSwapIntervalEXT"))(1);
+		if modern_glrc != nil{
+			if bool(wglMakeCurrent(window_dc, modern_glrc)){
+				modern_context = true
+				wglDeleteContext(opengl_rc)
+				opengl_rc = modern_glrc
+			}
+		}
+		opengl_init(modern_context)
+		wglSwapIntervalEXT(1)
 	}
 	ReleaseDC(window, window_dc)
 }
@@ -244,19 +246,19 @@ main:: proc(){
 	RegisterClassW(&window_class)
 
 	window:= win32.CreateWindowExW(
-		dwExStyle = {},
-		lpClassName = window_class.lpszClassName,
-		lpWindowName = const_utf16("Playing around"),
-		dwStyle = win32.WS_VISIBLE | win32.WS_OVERLAPPEDWINDOW,
-		X = win32.CW_USEDEFAULT,
-		Y = win32.CW_USEDEFAULT,
-		nWidth  = 1744,
-		nHeight = 1119,
-		hWndParent = nil,
-		hMenu = nil,
-		lpParam = nil,
-		hInstance = window_instance,
-		)
+	                               dwExStyle = {},
+	                               lpClassName = window_class.lpszClassName,
+	                               lpWindowName = const_utf16("Playing around"),
+	                               dwStyle = win32.WS_VISIBLE | win32.WS_OVERLAPPEDWINDOW,
+	                               X = win32.CW_USEDEFAULT,
+	                               Y = win32.CW_USEDEFAULT,
+	                               nWidth  = 1744,
+	                               nHeight = 1119,
+	                               hWndParent = nil,
+	                               hMenu = nil,
+	                               lpParam = nil,
+	                               hInstance = window_instance,
+	                               )
 
 	assert(window != nil)
 
@@ -271,23 +273,27 @@ main:: proc(){
 	monitor_seconds_per_frame:= (1.0/(f32(monitor_refresh_rate)))
 
  //testing 
-	win32_init_opengl(window)
-	gl.ClearColor(0,0.5,1,0.5)
+ win32_init_opengl(window)
+ gl.ClearColor(0,0.5,1,0.5)
 
  //Input initilization
-	input:[2]GameInput = {}
-	old_input, new_input := &input[0] ,&input[1]
+ input:[2]GameInput = {}
+ old_input, new_input := &input[0] ,&input[1]
 
 
  //Platform initilization
-	platform.permanent_size = Gigabytes*1
-	platform.temp_size      = Gigabytes*1
-	platform.total_size     = platform.permanent_size + platform.temp_size
+ platform.permanent_size = Gigabytes*1
+ platform.temp_size      = Gigabytes*1
+ platform.total_size     = platform.permanent_size + platform.temp_size
 	//Zero memory is false now but we might need to change it to true
 	platform.permanent_storage = cast(^u8)os.heap_alloc(int(platform.total_size), false)
 	platform.temp_storage = mem.ptr_offset(platform.permanent_storage,platform.permanent_size)
 
 	initilize_arena(&platform.arena, platform.total_size, mem.ptr_offset(platform.permanent_storage, size_of(GameState)))
+
+	trans_state:= cast(^TransientState)rawptr(platform.temp_storage)
+
+	initilize_arena(&trans_state.trans_arena, platform.temp_size - size_of(TransientState), mem.ptr_offset(platform.temp_storage, size_of(TransientState)))
 
 	hdc :HDC = GetDC(window)
 
@@ -398,8 +404,10 @@ main:: proc(){
 		last_counter = win32_get_wall_clock();
 
 		//width,height := get_window_dimention(window)
-		gl.Clear(gl.COLOR_BUFFER_BIT)
+		//gl.Clear(gl.COLOR_BUFFER_BIT)
+		hdc = GetDC(window)
 		display_buffer_in_window(&back_buffer, hdc, 0, 0)
+		ReleaseDC(window, hdc)
 	}
 	return
 }
