@@ -30,7 +30,6 @@ void main(void){
       color = tex_color* vec4(ambient_light, 1.0) * tex_color;
     }
   }else{
-
     if(tiles){
       color = obj_color ;
       }else{

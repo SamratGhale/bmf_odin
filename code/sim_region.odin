@@ -1,5 +1,6 @@
 package main
 import "core:mem"
+import "core:fmt"
 
 Animation::struct{
     is_active:b8,
@@ -31,8 +32,6 @@ EntityFlags::enum {
 }
 
 //TODO: put this in math.odin
-v2_f32::[2]f32
-v2_i32::[2]i32
 v4::struct{r,g,b,a:f32}
 rec2:: distinct matrix[2,2]f32
 
@@ -106,7 +105,7 @@ begin_sim::proc(sim_arena:^MemoryArena, game_state:^GameState, center:WorldPosit
 
   for x in min_chunk_pos.x..=max_chunk_pos.x{
     for y in min_chunk_pos.y..=max_chunk_pos.y{
-      chunk := get_world_chunk(world, v2_i32{x, y})
+      chunk := get_world_chunk(world, v2_i32{x, y}, &platform.arena)
 
       for chunk != nil{
         node:= chunk.node
@@ -114,8 +113,12 @@ begin_sim::proc(sim_arena:^MemoryArena, game_state:^GameState, center:WorldPosit
           entity := &game_state.low_entities[node.entity_index]
           entity_sim_space := subtract(world, entity.pos, sim_region.center)
 
-          if (entity_sim_space.x >= sim_region.bounds[0].x) &&
-          (entity_sim_space.y >= sim_region.bounds[0].y) && (entity_sim_space.x < sim_region.bounds[1].x && entity_sim_space.y < sim_region.bounds[1].y) {
+          if(entity_sim_space.x <= -16 ){
+           a := 100; 
+           fmt.println("APple pie")
+          }
+
+          if is_in_rectangle(sim_region.bounds, entity_sim_space) {
 
             add_entity_to_sim(game_state, sim_region, node.entity_index, entity, entity_sim_space)
           }
@@ -130,18 +133,21 @@ begin_sim::proc(sim_arena:^MemoryArena, game_state:^GameState, center:WorldPosit
 
 end_sim::proc(region:^SimRegion, game_state:^GameState){
 
-  for entity in &region.entities{
+  for i in 0..<region.entity_count{
+    entity := &region.entities[i]
 
     low:= &game_state.low_entities[entity.storage_index]
 
     entity.flags = low.sim.flags
-    low.sim = entity
+    low.sim = entity^
 
     new_world_p := map_into_world_pos(region.world, region.center, entity.pos)
 
     old_pos := low.pos
 
-    if !(old_pos.offset == new_world_p.offset) || !(old_pos.chunk_pos == new_world_p.chunk_pos){
+
+    if(old_pos.offset.y != new_world_p.offset.y || old_pos.offset.x != new_world_p.offset.x) ||
+    (old_pos.chunk_pos.x != new_world_p.chunk_pos.x || old_pos.chunk_pos.y != new_world_p.chunk_pos.y){
 
       change_entity_location(&platform.arena, region.world, entity.storage_index, low, new_world_p)
     }
@@ -149,9 +155,7 @@ end_sim::proc(region:^SimRegion, game_state:^GameState){
 }
 
 is_in_rectangle::proc(rect:rec2, test:v2_f32)->bool{
-
-  result := ((test.x < rect[1].x && test.y < rect[1].y) &&
-                (test.x >= rect[0].x && test.y >= rect[0].y));
+  result := ((test.x < rect[1].x && test.y < rect[1].y) && (test.x >= rect[0].x && test.y >= rect[0].y));
   return result;
 }
 

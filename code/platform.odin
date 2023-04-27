@@ -1,6 +1,7 @@
 package main
 
 import "core:mem"
+import win32 "core:sys/windows"
 
 MemoryArena::struct{
 	size      :i64,
@@ -25,7 +26,7 @@ get_alignment_offset::proc(arena:^MemoryArena, alignment:i64)->(align_offset:i64
 	return;
 }
 
-initilize_arena::proc(arena:^MemoryArena, size:i64, base:^u8){
+initilize_arena::proc(arena:^MemoryArena, size: i64, base:^u8){
 	arena.size = size;
 	arena.base = base;
 	arena.used = 0;
@@ -69,7 +70,6 @@ end_temp_memory::proc(temp_arena:TempMemory){
 }
 
 OffscreenBuffer::struct{
-	memory           :^u8,
 	pitch            :i32,
 	width            :i32,
 	height           :i32,
@@ -77,9 +77,9 @@ OffscreenBuffer::struct{
 }
 
 
-ButtonState::struct{
+ButtonState:: struct{
 	half_trans_count :i32,		
-	ended_down       :b8,
+	ended_down       :b32,
 }
 
 ButtonEnum::enum{
@@ -103,35 +103,78 @@ ButtonEnum::enum{
 }
 
 ControllerInput::struct {
-  is_connected  :b8,
-  is_analog     :b8,
-  stick_x		  	:f32,
-  stick_y				:f32,
-  buttons       :[17]ButtonState,
+	is_connected  : b8,
+	is_analog     : b8,
+	stick_x       : f32,
+	stick_y       : f32,
+	buttons       : [17]ButtonState,
 };
 
 GameInput::struct{
-	mouse_buttons             :[5]ButtonState,
-	dt_for_frame              :f32,
-	mouse_x, mouse_y, mouse_z :i32,
-	controllers               :[5]ControllerInput
+	mouse_buttons             : [5]ButtonState,
+	dt_for_frame              : f32,
+	mouse_x, mouse_y, mouse_z : i32,
+	controllers               : [5]ControllerInput
 }
+
+SoundOutput::struct {
+	samples_per_second        : u32,
+	running_sample_index      : u32,
+	bytes_per_sample          : u32,
+	secondary_buffer_size     : win32.DWORD,
+	safety_bytes              : win32.DWORD,
+};
+
+GameSoundOutputBuffer::struct {
+	samples_per_second :u32,
+	sample_count       :u32,
+	samples            :^i16
+};
 
 GameMode::enum{
 	game_mode_play,
 	game_mode_menu,
 }
 
+AssetSound_Enum::enum{
+	asset_sound_background,
+	asset_sound_jump,
+}
+
+LoadedSound::struct{
+	sample_count   :u32,
+	channel_count  :u32,
+	samples        :[2]^i16
+}
+
+SoundAsset::struct{
+	sounds 				 :[10]LoadedSound
+}
+
+
+PlayingSound::struct{
+	volume         :[2]f32,
+	id             :AssetSound_Enum,
+	samples_played :u32,
+	next           :^PlayingSound
+}
+
 PlatformState::struct{
+	game_mode 				:GameMode,
 	total_size        :i64,
 	permanent_size    :i64,
 	temp_size         :i64,
 	permanent_storage :^u8,
-	temp_storage			:^u8,
-	arena 						:MemoryArena,
-	bmp_asset         :BmpAsset
+	temp_storage	  :^u8,
+	arena 			  :MemoryArena,
+	bmp_asset         :BmpAsset,
+	font_asset        :Font,
+	sound_asset       :SoundAsset,
+	sound_buffer      :GameSoundOutputBuffer
 }
 
 Kilobytes::1024
 Megabytes::Kilobytes*1024
 Gigabytes::Megabytes*1024
+
+

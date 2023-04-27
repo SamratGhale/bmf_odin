@@ -1,6 +1,8 @@
 package main
 
+import "core:fmt"
 import "core:c"
+import libc "core:c/libc"
 import "core:math"
 
 TILE_CHUNK_UNINITILIZED::c.INT32_MAX
@@ -8,6 +10,8 @@ TILE_CHUNK_UNINITILIZED::c.INT32_MAX
 TILE_COUNT_PER_WIDTH::16
 TILE_COUNT_PER_HEIGHT::10
 
+v2_f32::[2]f32
+v2_i32::[2]i32
 WorldPosition::struct{
     chunk_pos :v2_i32,
     offset    :v2_f32,
@@ -76,9 +80,8 @@ clear_flag::#force_inline proc(val:^u32, flag:u32){
 //HEADER END
 
 initilize_chunk_tiles::proc(world:^World, chunk:^WorldChunk){
- for row, x in chunk.tiles{
-   for tile, y in row{
-    tile:=tile
+ for row, x in &chunk.tiles{
+   for tile, y in &row{
     tile.color = v4{1,1,1,1}
     tile.tile_pos  =  v2_i32{i32(x),i32(y)} 
    }
@@ -90,7 +93,7 @@ add_new_chunk::proc(arena:^MemoryArena, world:^World, head:^WorldChunk, chunk_po
     new_chunk = push_struct(arena, WorldChunk)
     new_chunk.chunk_pos = chunk_pos
     new_chunk.next = nil
-    new_chunk.node = nil
+    new_chunk.node = push_struct(&platform.arena,EntityNode)
     new_chunk.entity_count = 0;
 
     curr:=head
@@ -108,7 +111,7 @@ add_new_chunk::proc(arena:^MemoryArena, world:^World, head:^WorldChunk, chunk_po
 */
 get_world_chunk::proc(world:^World, chunk_pos:v2_i32 ,arena:^MemoryArena = nil)->^WorldChunk{
 
-    hash := 19 * chunk_pos.x + 7 + chunk_pos.y;
+    hash := 19 * abs(chunk_pos.x) + 7 + abs(chunk_pos.y);
     hash_slot := hash % (len(world.chunk_hash) -1)
 
     head:= &world.chunk_hash[hash_slot]
@@ -143,7 +146,7 @@ change_entity_location::proc(arena:^MemoryArena, world:^World, entity_index:u32,
     if old_p.chunk_pos.x != TILE_CHUNK_UNINITILIZED{
       chunk := get_world_chunk(world, old_p.chunk_pos, arena)
       assert(chunk != nil)
-      assert(chunk.node != nil)
+          assert(chunk.node != nil)
 
       node := chunk.node
       if node.entity_index == entity_index{
@@ -151,10 +154,11 @@ change_entity_location::proc(arena:^MemoryArena, world:^World, entity_index:u32,
       }else{
 
         curr := node;
-        for curr.next != nil{
+        for curr.next != nil && curr.entity_index != 0{
           if curr.next.entity_index == entity_index{
             node = curr.next
             curr.next = curr.next.next
+            break
           }else{
             curr = curr.next
           }
@@ -183,38 +187,28 @@ initilize_world::proc(world:^World, buffer_width:i32, buffer_height:i32){
  }
 }
 
-//Adds the tile to the tile path (LinkedList)
-append_tile::proc(chunk:^WorldChunk, new_tile:^Tile, arena:^MemoryArena){
-  add_flag(&new_tile.flags, u32(TileFlags.tile_path))
-
-  if chunk.tile_path == nil{
-    chunk.tile_path = push_struct(arena, TileNode)
-    chunk.tile_path.tile = new_tile
-  }else{
-    curr := chunk.tile_path 
-    for curr.next != nil{
-      curr = curr.next
-    }
-    curr.next = push_struct(arena, TileNode)
-    curr.tile = new_tile
-  }
+adjust_world_position::proc(world:^World, chunk_pos:^i32, offset:^f32, csim:f32){
+  extra_offset := i32(libc.roundf(offset^/ f32(csim)))
+  chunk_pos^   += extra_offset 
+  offset^      -= f32(f32(extra_offset) * csim)
 }
+
 
 map_into_world_pos::proc(world:^World, origin:WorldPosition, offset:v2_f32)->WorldPosition{
 
+  csim := world.chunk_size_in_meters
   result := origin
   result.offset += offset
-  extra_offset:=(offset / world.chunk_size_in_meters)
 
-  result.chunk_pos.x += i32(extra_offset.x)
-  result.chunk_pos.y += i32(extra_offset.y)
-
-  result.offset -= extra_offset * world.chunk_size_in_meters
+  adjust_world_position(world, &result.chunk_pos.y, &result.offset.y, csim.y)
+  adjust_world_position(world, &result.chunk_pos.x, &result.offset.x, csim.x)
   return result
 }
 
 update_camera::proc(game_state:^GameState, camera_ddp:v2_f32){
  animation := &game_state.chunk_animation; 
+
+ camera_ddp := camera_ddp
 
  if !animation.is_active{
   if camera_ddp != {0,0}{
@@ -222,14 +216,14 @@ update_camera::proc(game_state:^GameState, camera_ddp:v2_f32){
 
     animation.is_active = true
     animation.source = game_state.camera_p.offset
-    animation.dest   = game_state.camera_p.offset
-    animation.ddp    = camera_ddp.x * csim
-    animation.dest  += animation.ddp
+    animation.dest  += camera_ddp * csim
+    animation.ddp    = camera_ddp * csim 
     animation.completed = 0
   }
  }else{
   if animation.completed > 100{
-    animation.is_active = false
+    animation^ = Animation{}
+
     game_state.camera_p.offset = {}
     game_state.curr_chunk = game_state.camera_p.chunk_pos
   }else{
@@ -248,11 +242,19 @@ subtract::proc(world:^World, a:WorldPosition, b:WorldPosition)->v2_f32{
  result.x = f32(a.chunk_pos.x) - f32(b.chunk_pos.x)
 
  result = result * world.chunk_size_in_meters
- result += a.offset - b.offset
+ result = result + (a.offset - b.offset)
  return result
 }
 
 
+get_chunk_and_tile::proc(world:^World , pos:WorldPosition )->(chunk:^WorldChunk,tile:^Tile){
+
+  chunk = get_world_chunk(world, pos.chunk_pos);
+  x := cast(i32)libc.roundf(pos.offset.x);
+  y := cast(i32)libc.roundf(pos.offset.y);
+  tile = &chunk.tiles[x+ 8][y + 4];
+  return; 
+}
 
 
 

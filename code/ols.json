@@ -1,0 +1,8 @@
+{
+    "collections": [{ "name": "core", "path": "c:/Program Files/odin/odin.exe"},
+                  { "name": "shared", "path": "w:/bmf_odin/src" }],
+  "enable_semantic_tokens": true,
+  "enable_document_symbols": true,
+  "enable_hover": true,
+  "enable_snippets": true,
+}

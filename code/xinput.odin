@@ -23,29 +23,29 @@ XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE :: 8689
 XINPUT_GAMEPAD_TRIGGER_THRESHOLD    :: 30
 
 XINPUT_GAMEPAD::struct {
-	wButtons:win32.WORD,
-	bLeftTrigger:win32.BYTE,
-	bRightTrigger:win32.BYTE,
-	sThumbLX:win32.SHORT,
-	sThumbLY:win32.SHORT,
-	sThumbRX:win32.SHORT,
-	sThumbRY:win32.SHORT,
+    wButtons:win32.WORD,
+    bLeftTrigger:win32.BYTE,
+    bRightTrigger:win32.BYTE,
+    sThumbLX:win32.SHORT,
+    sThumbLY:win32.SHORT,
+    sThumbRX:win32.SHORT,
+    sThumbRY:win32.SHORT,
 }
 
 XINPUT_STATE::struct {
-  dwPacketNumber:win32.DWORD,
-  Gamepad:XINPUT_GAMEPAD,
+    dwPacketNumber:win32.DWORD,
+    Gamepad:XINPUT_GAMEPAD,
 }
 
 XINPUT_VIBRATION::struct {
-	wLeftMotorSpeed:win32.WORD,
-	wRightMotorSpeed:win32.WORD,
+    wLeftMotorSpeed:win32.WORD,
+    wRightMotorSpeed:win32.WORD,
 }
 
 foreign import xinput "system:xinput.lib"
 
 foreign xinput{
-	XInputGetState::proc(dwUserIndex:win32.DWORD, pState:^XINPUT_STATE )->win32.DWORD ---
-	XInputSetState::proc(dwUserIndex:win32.DWORD, pVibration:^XINPUT_VIBRATION)->win32.DWORD ---
+    XInputGetState::proc(dwUserIndex:win32.DWORD, pState:^XINPUT_STATE )->win32.DWORD ---
+    XInputSetState::proc(dwUserIndex:win32.DWORD, pVibration:^XINPUT_VIBRATION)->win32.DWORD ---
 }
 
