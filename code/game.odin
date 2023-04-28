@@ -16,6 +16,22 @@ PriorityNode::struct{
 }
 
 
+GameState::struct{
+	world                    :^World,
+	camera_p                 :WorldPosition,
+	camera_bounds            :rec2,
+	low_entity_count         :u32,
+	low_entities             :[10000]LowEntity,
+	is_initilized            :b8,
+	show_tiles               :b8,
+	chunk_animation          :Animation,
+	curr_chunk               :v2_i32,
+	first_playing_sound      :^PlayingSound,
+	first_free_playing_sound :^PlayingSound,
+}
+//End definations 
+
+
 push_priority_node::proc(head:^^PriorityNode, entity:^LowEntity, arena:^TempMemory){
 	curr := head^;
 
@@ -39,20 +55,6 @@ push_priority_node::proc(head:^^PriorityNode, entity:^LowEntity, arena:^TempMemo
 		temp.next = curr.next
 		curr.next = temp
 	}
-}
-
-GameState::struct{
-	world                    :^World,
-	camera_p                 :WorldPosition,
-	camera_bounds            :rec2,
-	low_entity_count         :u32,
-	low_entities             :[10000]LowEntity,
-	is_initilized            :b8,
-	show_tiles               :b8,
-	chunk_animation          :Animation,
-	curr_chunk               :v2_i32,
-	first_playing_sound      :^PlayingSound,
-	first_free_playing_sound :^PlayingSound,
 }
 
 add_low_entity::proc(game_state:^GameState, type:EntityType, pos:WorldPosition, color:v4={0,0,0,0})->(low_entity:^LowEntity, entity_index:u32){
@@ -113,9 +115,7 @@ add_wall::proc(game_state:^GameState, chunk_pos:v2_i32 ,offset:v2_f32)->(low :^L
 	return ;
 }
 
-add_walls_around_chunk_pos::proc(game_state:^GameState ,
-	chunk_pos:v2_i32)
-{
+add_walls_around_chunk_pos::proc(game_state:^GameState , chunk_pos:v2_i32) {
 	using BmpAsset_Enum
 
 	for x in -7..=7 {
@@ -239,19 +239,18 @@ undo_player::proc(game_state:^GameState , low_entity:^LowEntity, ddp:^v2_f32) {
 	len   := get_path_length(chunk.tile_path);
 
 	if (len > 1) && !animation.is_active{
-		diff:v2_i32;
-
 		curr_tile := get_last_tile(chunk.tile_path);
 		remove_last_tile(chunk.tile_path);
 		prev_tile := get_last_tile(chunk.tile_path);
     assert(prev_tile != nil);  // because we are checking this on the if block
-    diff = prev_tile.tile_pos - curr_tile.tile_pos;
+    diff := prev_tile.tile_pos - curr_tile.tile_pos;
 
     ddp.x = f32(diff.x)
     ddp.y = f32(diff.y)
-}
+  }
 }
 
+//TODO:: Make it simpler? or make it generic
 update_player::proc(game_state:^GameState, ddp:v2_f32, entity:^SimEntity, low:^LowEntity, force:b8){
 
 	using TileFlags
@@ -282,27 +281,27 @@ update_player::proc(game_state:^GameState, ddp:v2_f32, entity:^SimEntity, low:^L
 				else if ddp.y == 1 { entity.face_direction = 1; }
 
 				animation.forced = force;
-        game_play_sound(game_state,  AssetSound_Enum.asset_sound_jump);
-    }
-}
-}
+				game_play_sound(game_state,  AssetSound_Enum.asset_sound_jump);
+			}
+		}
+	}
 
-if animation.is_active{
-	if animation.completed >= 100{
-		animation.is_active = false
+	if animation.is_active{
+		if animation.completed >= 100{
+			animation.is_active = false
 
-		start_pos.x = libc.roundf(start_pos.x)
-		start_pos.y = libc.roundf(start_pos.y)
+			start_pos.x = libc.roundf(start_pos.x)
+			start_pos.y = libc.roundf(start_pos.y)
 
-		chunk, tile := get_chunk_and_tile(world, low.pos)
+			chunk, tile := get_chunk_and_tile(world, low.pos)
 
-		if !animation.forced{
-			append_tile(chunk, tile, &platform.arena)
+			if !animation.forced{
+				append_tile(chunk, tile, &platform.arena)
 
-			if is_flag_set(tile.flags, u32(tile_end)){
+				if is_flag_set(tile.flags, u32(tile_end)){
           //check_leve_complete(game_state, chunk, entity, low)
-      }
-      else if is_flag_set(tile.flags, u32(tile_entity)){
+        }
+        else if is_flag_set(tile.flags, u32(tile_entity)){
           //go thru all the entities in the tile
 
           node := &tile.entities
@@ -314,24 +313,24 @@ if animation.is_active{
 
             //Do the banner stuffs
             node = node.next
+          }
         }
-    }
-}else{
-	old_pos:WorldPosition= {chunk_pos = low.pos.chunk_pos, offset= animation.source}
+      }else{
+      	old_pos:WorldPosition= {chunk_pos = low.pos.chunk_pos, offset= animation.source}
 
-	_, source_tile := get_chunk_and_tile(world, old_pos)
+      	_, source_tile := get_chunk_and_tile(world, old_pos)
 
-	if is_flag_set(source_tile.flags, u32(tile_entity)){
+      	if is_flag_set(source_tile.flags, u32(tile_entity)){
           //do the banner stuff
+        }
       }
+    }else {
+    	chunk_diff  := animation.ddp
+    	diff_to_add := chunk_diff / 10.0
+    	start_pos^  += diff_to_add
+    	animation.completed += 10
+    }
   }
-}else {
-	chunk_diff  := animation.ddp
-	diff_to_add := chunk_diff / 10.0
-	start_pos^  += diff_to_add
-	animation.completed += 10
-}
-}
 }
 
 add_entity_number::proc(game_state:^GameState, chunk_pos:v2_i32 , offset:v2_f32, val:i32){
@@ -342,12 +341,12 @@ level_one_init::proc(game_state:^GameState){
 
 }
 
-render_game::proc(buffer:^OffscreenBuffer, input:^GameInput){
+render_game::proc(input:^GameInput){
 	game_state:=cast(^GameState)(platform.permanent_storage)
 	if !game_state.is_initilized {
 
 		game_state.world = push_struct(&platform.arena, World)
-		initilize_world(game_state.world, buffer.width, buffer.height)
+		initilize_world(game_state.world, platform.window_dim.x, platform.window_dim.y)
 
 		world:=game_state.world
 		dim_in_meters:= world.chunk_size_in_meters /2
@@ -359,17 +358,21 @@ render_game::proc(buffer:^OffscreenBuffer, input:^GameInput){
 
 		add_walls_around_chunk_pos(game_state, v2_i32{0,0});
 
-		a:= 2.0 / f32(buffer.width);
-		b:= 2.0 / f32(buffer.height);
+		//TODO: if we always start on menu mode then don't put it on here
+		//But that would make it always require to start on menu mode
+		{
+			a:= 2.0 / f32(platform.window_dim.x);
+			b:= 2.0 / f32(platform.window_dim.y);
 
-		proj:[]f32 = {
-			a, 0, 0, 0,
-			0, b, 0, 0,
-			0, 0, 1, 0,
-			-1, -1, 0, 1,
-		};
+			proj:[]f32 = {
+				a, 0, 0, 0,
+				0, b, 0, 0,
+				0, 0, 1, 0,
+				-1, -1, 0, 1,
+			};
 
-		gl.UniformMatrix4fv(opengl_config.transform_id, 1, gl.FALSE, &proj[0]);
+			gl.UniformMatrix4fv(opengl_config.transform_id, 1, gl.FALSE, &proj[0]);
+		}
 
 		game_play_sound(game_state, AssetSound_Enum.asset_sound_background)
 		game_state.is_initilized = true

@@ -1,5 +1,27 @@
 package main
 
+TileFlags::enum{
+  tile_occoupied = (1<<1),
+  tile_path   = (1<<2),
+  tile_empty  = (1<<3),
+  tile_entity = (1<<4),
+  tile_end    = (1<<5),
+}
+
+Tile::struct{
+    tile_pos      :v2_i32,
+    color         :v4,
+    initilized    :b8,
+    gl_Context    :OpenglContext,
+    entity_count  :u32,
+    entities      :EntityNode,
+    flags         :u32,
+}
+
+TileNode::struct{
+    tile:^Tile,
+    next:^TileNode,
+}
 
 append_tile::proc(chunk:^WorldChunk, new_tile:^Tile, arena:^MemoryArena){
   add_flag(&new_tile.flags, u32(TileFlags.tile_path))

@@ -27,11 +27,11 @@ WorldChunk::struct{
     player_offset :v2_f32,
     entity_count  :u32,
     player_index  :u32,
-    tiles         :[TILE_COUNT_PER_WIDTH][TILE_COUNT_PER_HEIGHT]Tile
+    tiles         :[TILE_COUNT_PER_WIDTH][TILE_COUNT_PER_HEIGHT]Tile,
     node          :^EntityNode,
     next          :^WorldChunk,
-    tile_path     :^TileNode
-    completed     :b8
+    tile_path     :^TileNode,
+    completed     :b8,
 }
 
 World::struct{
@@ -40,28 +40,6 @@ World::struct{
     meters_to_pixels     :u32,
 }
 
-TileFlags::enum{
-  tile_occoupied = (1<<1),
-  tile_path   = (1<<2),
-  tile_empty  = (1<<3),
-  tile_entity = (1<<4),
-  tile_end    = (1<<5),
-}
-
-Tile::struct{
-    tile_pos      :v2_i32,
-    color         :v4,
-    initilized    :b8,
-    gl_Context    :OpenglContext,
-    entity_count  :u32,
-    entities      :EntityNode,
-    flags         :u32,
-}
-
-TileNode::struct{
-    tile:^Tile,
-    next:^TileNode,
-}
 
 add_flag::#force_inline proc(val:^u32, flag:u32){
     val:=val

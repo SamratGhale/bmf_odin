@@ -11,8 +11,8 @@ MemoryArena::struct{
 }
 
 TransientState::struct{
-	is_initilized :b8,
 	trans_arena   :MemoryArena,
+	is_initilized :b8,
 }
 
 get_alignment_offset::proc(arena:^MemoryArena, alignment:i64)->(align_offset:i64){
@@ -69,14 +69,6 @@ end_temp_memory::proc(temp_arena:TempMemory){
 	arena.temp_count+=1
 }
 
-OffscreenBuffer::struct{
-	pitch            :i32,
-	width            :i32,
-	height           :i32,
-	bytes_per_pixel  :i32,
-}
-
-
 ButtonState:: struct{
 	half_trans_count :i32,		
 	ended_down       :b32,
@@ -114,7 +106,7 @@ GameInput::struct{
 	mouse_buttons             : [5]ButtonState,
 	dt_for_frame              : f32,
 	mouse_x, mouse_y, mouse_z : i32,
-	controllers               : [5]ControllerInput
+	controllers               : [5]ControllerInput,
 }
 
 SoundOutput::struct {
@@ -128,7 +120,7 @@ SoundOutput::struct {
 GameSoundOutputBuffer::struct {
 	samples_per_second :u32,
 	sample_count       :u32,
-	samples            :^i16
+	samples            :^i16,
 };
 
 GameMode::enum{
@@ -144,33 +136,35 @@ AssetSound_Enum::enum{
 LoadedSound::struct{
 	sample_count   :u32,
 	channel_count  :u32,
-	samples        :[2]^i16
+	samples        :[2]^i16,
 }
 
 SoundAsset::struct{
-	sounds 				 :[10]LoadedSound
+	sounds 				 :[10]LoadedSound,
 }
-
 
 PlayingSound::struct{
 	volume         :[2]f32,
 	id             :AssetSound_Enum,
 	samples_played :u32,
-	next           :^PlayingSound
+	next           :^PlayingSound,
 }
 
 PlatformState::struct{
-	game_mode 				:GameMode,
-	total_size        :i64,
-	permanent_size    :i64,
-	temp_size         :i64,
-	permanent_storage :^u8,
-	temp_storage	  :^u8,
-	arena 			  :MemoryArena,
-	bmp_asset         :BmpAsset,
-	font_asset        :Font,
-	sound_asset       :SoundAsset,
-	sound_buffer      :GameSoundOutputBuffer
+	running 		     :bool,
+	game_mode 		     :GameMode,
+	total_size           :i64,
+	permanent_size       :i64,
+	temp_size            :i64,
+	permanent_storage    :^u8,
+	temp_storage	     :^u8,
+	arena 			     :MemoryArena,
+	bmp_asset            :BmpAsset,
+	font_asset           :Font,
+	sound_asset          :SoundAsset,
+	sound_buffer         :GameSoundOutputBuffer,
+	window_dim 		     :v2_i32,
+	monitor_refresh_rate :int, 
 }
 
 Kilobytes::1024

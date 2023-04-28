@@ -8,13 +8,11 @@ import gl     "vendor:OpenGL"
 const_utf16 :: intrinsics.constant_utf16_cstring
 
 //global variables
-null_val:uintptr 
-running:bool=true
-back_buffer:OffscreenBuffer
-opengl_config:OpenglConfig
-platform:PlatformState
-global_perf_count_freq:i64
-secondary_buff: ^IDirectSoundBuffer
+opengl_config           :OpenglConfig
+platform                :PlatformState
+global_perf_count_freq  :i64
+secondary_buff          : ^IDirectSoundBuffer
+sleep_is_granular       : bool
 
 win32_get_wall_clock::proc()->(result:win32.LARGE_INTEGER){
 	using win32
@@ -28,11 +26,81 @@ win32_get_seconds_elapsed::proc(start:win32.LARGE_INTEGER , end:win32.LARGE_INTE
 	return
 }
 
-resize_buffer::proc(buffer:^OffscreenBuffer, width:i32, height:i32) {
-	buffer.width = width;
-	buffer.height = height;
-	buffer.bytes_per_pixel = 4;
-	buffer.pitch = width * buffer.bytes_per_pixel;
+sleep_till_frame_end::proc(last_counter: win32.LARGE_INTEGER){
+	using win32
+	work_counter := win32_get_wall_clock()
+	work_seconds_elapsed:= win32_get_seconds_elapsed(last_counter, work_counter); 
+
+	monitor_seconds_per_frame := (1.0/(f32(platform.monitor_refresh_rate)))
+
+	seconds_elapsed_for_frame:f32 = work_seconds_elapsed;
+
+	if seconds_elapsed_for_frame < monitor_seconds_per_frame {
+		if sleep_is_granular {
+			sleep_ms:= cast(DWORD)(1000.0 * (monitor_seconds_per_frame - seconds_elapsed_for_frame));
+			if sleep_ms>0.0{
+				Sleep(sleep_ms); 
+			}
+		} 
+
+		test_seconds_elapsed_for_frame:= win32_get_seconds_elapsed(last_counter, win32_get_wall_clock());
+
+		for seconds_elapsed_for_frame < monitor_seconds_per_frame{
+			seconds_elapsed_for_frame = win32_get_seconds_elapsed(last_counter, win32_get_wall_clock());
+		}
+	}
+}
+
+calculate_sound_bytes_to_write::proc(sound_output: ^SoundOutput, sound_is_valid:^bool, sound_bytes_per_frame: int, flip_wall_clock: win32.LARGE_INTEGER, )->(byte_to_lock:win32.DWORD, byte_to_write:win32.DWORD){
+
+	using win32
+
+	monitor_seconds_per_frame:= (1.0/(f32(platform.monitor_refresh_rate)))
+
+	audio_wall_clock:=win32_get_wall_clock()
+	from_begin_to_audio_seconds := win32_get_seconds_elapsed(flip_wall_clock, audio_wall_clock)
+
+	play_cursor, write_cursor : DWORD
+
+	if SUCCEEDED(secondary_buff->GetCurrentPosition(&play_cursor, &write_cursor)) {
+
+		if !sound_is_valid^ {
+			sound_output.running_sample_index = write_cursor / sound_output.bytes_per_sample
+			sound_is_valid^ = true
+		}
+
+		byte_to_lock = (sound_output.running_sample_index * sound_output.bytes_per_sample) % sound_output.secondary_buffer_size
+
+		seconds_left_until_flip :f32= monitor_seconds_per_frame - from_begin_to_audio_seconds
+
+		bytes_until_flip := DWORD((seconds_left_until_flip / monitor_seconds_per_frame) * f32(sound_bytes_per_frame))
+
+		frame_boundry_byte:= play_cursor + bytes_until_flip
+
+		safe_write_cursor := write_cursor
+
+		if safe_write_cursor < play_cursor {
+			safe_write_cursor += sound_output.secondary_buffer_size
+		}
+
+		assert(safe_write_cursor >= play_cursor)
+		safe_write_cursor += sound_output.safety_bytes
+
+		target_cursor:DWORD=0
+		target_cursor = write_cursor + u32(sound_bytes_per_frame) + sound_output.safety_bytes
+		target_cursor = target_cursor % sound_output.secondary_buffer_size
+
+
+		if byte_to_lock > target_cursor {
+			byte_to_write = (sound_output.secondary_buffer_size - byte_to_lock) 
+			byte_to_write += target_cursor 
+		}else{
+			byte_to_write = target_cursor - byte_to_lock 
+		}
+		platform.sound_buffer.samples_per_second = sound_output.samples_per_second
+		platform.sound_buffer.sample_count = byte_to_write / sound_output.bytes_per_sample
+	}
+	return 
 }
 
 window_callback:: proc(window: win32.HWND , message: win32.UINT , WParam:win32.WPARAM , LParam:win32.LPARAM )->win32.LRESULT {
@@ -44,18 +112,19 @@ window_callback:: proc(window: win32.HWND , message: win32.UINT , WParam:win32.W
 		case WM_PAINT:{
 
 			width, height := get_window_dimention(window)
-			resize_buffer(&back_buffer, width, height)
+			platform.window_dim = v2_i32{width, height}
+
 			paint: PAINTSTRUCT
 			BeginPaint(window, &paint)
 			EndPaint(window, &paint)
 
 		}
 		case WM_QUIT, WM_DESTROY: {
-			running = false;
+			platform.running = false;
 		}
 		case WM_COMMAND: {
 			if LOWORD(cast(u32)WParam) == 2 {
-				running = false;
+				platform.running = false;
 			}
 		}
 		case:{
@@ -130,13 +199,13 @@ process_pending_messages::proc(keyboard:^ControllerInput){
 					alt_key_was_down:b8 = b8((int(message.lParam) &(1<<29)))
 
 					if (vk_code == VK_F4) && alt_key_was_down{
-						running = false
+						platform.running = false
 					}
 				}
 			}
 			case WM_QUIT:
 			case WM_DESTROY: {
-				running = false;
+				platform.running = false;
 			}
 
 			case:{
@@ -148,8 +217,11 @@ process_pending_messages::proc(keyboard:^ControllerInput){
 }
 
 
-display_buffer_in_window::proc(buffer:^OffscreenBuffer, dc:win32.HDC , width:i32, height:i32) {
-	win32.SwapBuffers(dc);
+display_buffer_in_window::proc(window :win32.HWND, width:i32, height:i32) {
+	using win32
+	hdc := GetDC(window) 
+	SwapBuffers(hdc);
+	ReleaseDC(window, hdc)
 }
 
 get_window_dimention::proc(window:win32.HWND)->(width:i32, height:i32){
@@ -204,7 +276,7 @@ win32_init_opengl::proc(window:win32.HWND ){
 			WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
 			0,
 		}
-		share_context:HGLRC = cast(HGLRC)null_val;
+		share_context:HGLRC = cast(HGLRC)nil;
 		wglCreateContextAttribsARB = CreateContextAttribsARBType(wglGetProcAddress("wglCreateContextAttribsARB"))
 
 		wglSwapIntervalEXT = SwapIntervalEXTType(wglGetProcAddress("wglSwapIntervalEXT"))
@@ -262,6 +334,88 @@ win32_init_dsound::proc(window:win32.HWND, samples_per_second:u32, buffer_size: 
 		if(win32.SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_des, &secondary_buff, nil))){
 			win32.OutputDebugStringA("Secondary buffer format was set")
 		}
+	}
+}
+
+process_all_input::proc(old_input:^GameInput, new_input: ^GameInput){
+
+	monitor_seconds_per_frame:= (1.0/(f32(platform.monitor_refresh_rate)))
+	one_mask:u8=1
+
+	using win32
+	new_keyboard_controller := &new_input.controllers[0];
+	old_keyboard_controller := &old_input.controllers[0];
+
+	new_keyboard_controller^ = {};
+	new_keyboard_controller.is_connected = true;
+	new_input.dt_for_frame = monitor_seconds_per_frame;
+
+	for p, j in &new_keyboard_controller.buttons {
+		new_keyboard_controller.buttons[j].ended_down = old_keyboard_controller.buttons[j].ended_down
+	}
+
+	process_pending_messages(new_keyboard_controller)
+
+	process_keyboard_message(&new_input.mouse_buttons[0], b32( GetKeyState(VK_LBUTTON) &  i16(one_mask << 15)));
+	process_keyboard_message(&new_input.mouse_buttons[1], b32( GetKeyState(VK_MBUTTON) &  i16(one_mask << 15)));
+	process_keyboard_message(&new_input.mouse_buttons[2], b32( GetKeyState(VK_RBUTTON) &  i16(one_mask << 15)));
+	process_keyboard_message(&new_input.mouse_buttons[3], b32( GetKeyState(VK_XBUTTON1) & i16(one_mask << 15)));
+	process_keyboard_message(&new_input.mouse_buttons[4], b32( GetKeyState(VK_XBUTTON2) & i16(one_mask << 15)));
+
+	controller_state:XINPUT_STATE;	
+	for i in 0..<XUSER_MAX_COUNT {
+
+		our_controller_index:= u32(i+1) 
+		old_controller:= &old_input.controllers[our_controller_index]
+		new_controller:= &new_input.controllers[our_controller_index]
+
+		if XInputGetState(cast(u32)i, &controller_state)== ERROR_SUCCESS{
+
+			using ButtonEnum
+
+			new_controller.is_connected = true;
+			new_controller.is_analog = old_controller.is_analog
+
+			Pad := &controller_state.Gamepad;
+
+			process_xinput_button(Pad.wButtons, &old_controller.buttons[action_down],   XINPUT_GAMEPAD_A,              &new_controller.buttons[action_down]);
+			process_xinput_button(Pad.wButtons, &old_controller.buttons[action_right],  XINPUT_GAMEPAD_B,              &new_controller.buttons[action_right]);
+			process_xinput_button(Pad.wButtons, &old_controller.buttons[action_left],   XINPUT_GAMEPAD_X,              &new_controller.buttons[action_left]);
+			process_xinput_button(Pad.wButtons, &old_controller.buttons[action_up],     XINPUT_GAMEPAD_Y,              &new_controller.buttons[action_up]);
+			process_xinput_button(Pad.wButtons, &old_controller.buttons[left_shoulder], XINPUT_GAMEPAD_LEFT_SHOULDER,  &new_controller.buttons[left_shoulder]);
+			process_xinput_button(Pad.wButtons, &old_controller.buttons[right_shoulder],XINPUT_GAMEPAD_RIGHT_SHOULDER, &new_controller.buttons[right_shoulder]);
+			process_xinput_button(Pad.wButtons, &old_controller.buttons[start],         XINPUT_GAMEPAD_START,          &new_controller.buttons[start]);
+			process_xinput_button(Pad.wButtons, &old_controller.buttons[back],          XINPUT_GAMEPAD_BACK,           &new_controller.buttons[back]);
+
+			new_controller.stick_x = process_stick_value(Pad.sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
+			new_controller.stick_y = process_stick_value(Pad.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
+
+			if (new_controller.stick_x != 0.0) || (new_controller.stick_y != 0.0){
+				new_controller.is_analog = true;
+			}
+
+			if b32(Pad.wButtons & XINPUT_GAMEPAD_DPAD_UP) {
+				new_controller.stick_y = 1.0;
+				new_controller.is_analog = false;
+			} else if b32(Pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) {
+				new_controller.stick_y = -1.0;
+				new_controller.is_analog = false;
+			}
+			if b32(Pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) {
+				new_controller.stick_x = -1.0;
+				new_controller.is_analog = false;
+			} else if b32(Pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) {
+				new_controller.stick_x = 1.0;
+				new_controller.is_analog = false;
+			}
+
+			Threshold:f32= 0.5;
+			process_xinput_button((new_controller.stick_x > Threshold) ? 1 : 0, &new_controller.buttons[move_right], 1, &old_controller.buttons[move_right]);
+			process_xinput_button((new_controller.stick_x < -Threshold) ? 1 : 0, &new_controller.buttons[move_left], 1, &old_controller.buttons[move_left]);
+			process_xinput_button((new_controller.stick_y > Threshold) ? 1 : 0, &new_controller.buttons[move_up], 1, &old_controller.buttons[move_up]);
+			process_xinput_button((new_controller.stick_y < -Threshold) ? 1 : 0, &new_controller.buttons[move_down], 1, &old_controller.buttons[move_down]);
+
+		}	
 	}
 }
 
@@ -356,14 +510,14 @@ main:: proc(){
 	assert(window != nil)
 
 	desired_schedular_ms:u32 = 1
-	sleep_is_granular:b32 = (timeBeginPeriod(desired_schedular_ms) == TIMERR_NOERROR)
+	sleep_is_granular = (timeBeginPeriod(desired_schedular_ms) == TIMERR_NOERROR)
 
 	perf_count_freq_res:LARGE_INTEGER;
 	QueryPerformanceFrequency(&perf_count_freq_res)
 	global_perf_count_freq = i64(perf_count_freq_res)
 
-	monitor_refresh_rate := 60;
-	monitor_seconds_per_frame:= (1.0/(f32(monitor_refresh_rate)))
+	platform.monitor_refresh_rate = 60;
+	monitor_seconds_per_frame:= (1.0/(f32(platform.monitor_refresh_rate)))
 
     //testing 
     win32_init_opengl(window)
@@ -381,18 +535,16 @@ main:: proc(){
     //Zero memory is false now but we might need to change it to true
     platform.permanent_storage = cast(^u8)os.heap_alloc(int(platform.total_size), false)
     platform.temp_storage = mem.ptr_offset(platform.permanent_storage,platform.permanent_size)
-    //read_font_asset("../data/fonts.dat", &platform.font_asset)
+    read_font_asset("../data/fonts.dat", &platform.font_asset)
 
     initilize_arena(&platform.arena, platform.total_size, mem.ptr_offset(platform.permanent_storage, size_of(GameState) + size_of(MenuState)))
 
     trans_state:= cast(^TransientState)rawptr(platform.temp_storage)
 
-    initilize_arena(&trans_state.trans_arena, platform.temp_size - size_of(TransientState), mem.ptr_offset(platform.temp_storage, size_of(TransientState)))
+    initilize_arena(&trans_state.trans_arena, platform.temp_size - size_of(TransientState), mem.ptr_offset(platform.temp_storage, size_of(TransientState) + size_of(MenuState)))
 
     hdc :HDC = GetDC(window)
 
-    //Timer code
-    flip_wall_clock := win32_get_wall_clock()
     last_counter    := win32_get_wall_clock()
 
 
@@ -403,7 +555,7 @@ main:: proc(){
     sound_output.bytes_per_sample       = size_of(i16) * 2
     sound_output.secondary_buffer_size  = sound_output.samples_per_second * sound_output.bytes_per_sample
 
-    sound_bytes_per_frame :int= int(f32(sound_output.samples_per_second) * f32(sound_output.bytes_per_sample) / f32(monitor_refresh_rate))
+    sound_bytes_per_frame :int= int(f32(sound_output.samples_per_second) * f32(sound_output.bytes_per_sample) / f32(platform.monitor_refresh_rate))
 
     sound_output.safety_bytes           = u32(sound_bytes_per_frame/3.0)
 
@@ -412,191 +564,39 @@ main:: proc(){
     secondary_buff->Play(0,0, DSBPLAY_LOOPING)
 
     samples: ^i16 = cast(^i16)os.heap_alloc(int(sound_output.secondary_buffer_size), true)
+    platform.sound_buffer = {}
+    platform.sound_buffer.samples = samples
 
 
 
-    sound_is_valid:b8=false
+    sound_is_valid:bool=false
 
-    for running {
-    	new_keyboard_controller := &new_input.controllers[0];
-    	old_keyboard_controller := &old_input.controllers[0];
+    platform.running = true
 
-    	new_keyboard_controller^ = {};
-    	new_keyboard_controller.is_connected = true;
-    	new_input.dt_for_frame = monitor_seconds_per_frame;
+    for platform.running {
 
-    	for p, j in &new_keyboard_controller.buttons {
-    		new_keyboard_controller.buttons[j].ended_down = old_keyboard_controller.buttons[j].ended_down
-    	}
-
-    	process_pending_messages(new_keyboard_controller)
-
-    	one_mask:u8=1
-    	process_keyboard_message(&new_input.mouse_buttons[0], b32( GetKeyState(VK_LBUTTON) &  i16(one_mask << 15)));
-    	process_keyboard_message(&new_input.mouse_buttons[1], b32( GetKeyState(VK_MBUTTON) &  i16(one_mask << 15)));
-    	process_keyboard_message(&new_input.mouse_buttons[2], b32( GetKeyState(VK_RBUTTON) &  i16(one_mask << 15)));
-    	process_keyboard_message(&new_input.mouse_buttons[3], b32( GetKeyState(VK_XBUTTON1) & i16(one_mask << 15)));
-    	process_keyboard_message(&new_input.mouse_buttons[4], b32( GetKeyState(VK_XBUTTON2) & i16(one_mask << 15)));
-
-    	controller_state:XINPUT_STATE;	
-    	for i in 0..<XUSER_MAX_COUNT {
-
-		    //This is because out first controller is keyboard and we already read keyboard
-		    our_controller_index:= u32(i+1) 
-		    old_controller:= &old_input.controllers[our_controller_index]
-		    new_controller:= &new_input.controllers[our_controller_index]
-
-		    if XInputGetState(cast(u32)i, &controller_state)== ERROR_SUCCESS{
-
-		    	using ButtonEnum
-
-		    	new_controller.is_connected = true;
-		    	new_controller.is_analog = old_controller.is_analog
-
-		    	Pad := &controller_state.Gamepad;
-
-		    	process_xinput_button(Pad.wButtons, &old_controller.buttons[action_down],   XINPUT_GAMEPAD_A,              &new_controller.buttons[action_down]);
-		    	process_xinput_button(Pad.wButtons, &old_controller.buttons[action_right],  XINPUT_GAMEPAD_B,              &new_controller.buttons[action_right]);
-		    	process_xinput_button(Pad.wButtons, &old_controller.buttons[action_left],   XINPUT_GAMEPAD_X,              &new_controller.buttons[action_left]);
-		    	process_xinput_button(Pad.wButtons, &old_controller.buttons[action_up],     XINPUT_GAMEPAD_Y,              &new_controller.buttons[action_up]);
-		    	process_xinput_button(Pad.wButtons, &old_controller.buttons[left_shoulder], XINPUT_GAMEPAD_LEFT_SHOULDER,  &new_controller.buttons[left_shoulder]);
-		    	process_xinput_button(Pad.wButtons, &old_controller.buttons[right_shoulder],XINPUT_GAMEPAD_RIGHT_SHOULDER, &new_controller.buttons[right_shoulder]);
-		    	process_xinput_button(Pad.wButtons, &old_controller.buttons[start],         XINPUT_GAMEPAD_START,          &new_controller.buttons[start]);
-		    	process_xinput_button(Pad.wButtons, &old_controller.buttons[back],          XINPUT_GAMEPAD_BACK,           &new_controller.buttons[back]);
-
-		    	new_controller.stick_x = process_stick_value(Pad.sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
-		    	new_controller.stick_y = process_stick_value(Pad.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
-
-		    	if (new_controller.stick_x != 0.0) || (new_controller.stick_y != 0.0){
-		    		new_controller.is_analog = true;
-		    	}
-
-		    	if b32(Pad.wButtons & XINPUT_GAMEPAD_DPAD_UP) {
-		    		new_controller.stick_y = 1.0;
-		    		new_controller.is_analog = false;
-		    	} else if b32(Pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) {
-		    		new_controller.stick_y = -1.0;
-		    		new_controller.is_analog = false;
-		    	}
-		    	if b32(Pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) {
-		    		new_controller.stick_x = -1.0;
-		    		new_controller.is_analog = false;
-		    	} else if b32(Pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) {
-		    		new_controller.stick_x = 1.0;
-		    		new_controller.is_analog = false;
-		    	}
-
-		    	Threshold:f32= 0.5;
-		    	process_xinput_button((new_controller.stick_x > Threshold) ? 1 : 0, &new_controller.buttons[move_right], 1, &old_controller.buttons[move_right]);
-		    	process_xinput_button((new_controller.stick_x < -Threshold) ? 1 : 0, &new_controller.buttons[move_left], 1, &old_controller.buttons[move_left]);
-		    	process_xinput_button((new_controller.stick_y > Threshold) ? 1 : 0, &new_controller.buttons[move_up], 1, &old_controller.buttons[move_up]);
-		    	process_xinput_button((new_controller.stick_y < -Threshold) ? 1 : 0, &new_controller.buttons[move_down], 1, &old_controller.buttons[move_down]);
-
-		    }	
-		}
+    	process_all_input(old_input, new_input)
 
 		switch(platform.game_mode){
-			case GameMode.game_mode_play:{
-				render_game(&back_buffer, new_input);
+			case .game_mode_play:{
+				render_game(new_input);
 			}	
-			case GameMode.game_mode_menu:{
-				render_menu(&back_buffer, new_input);
+			case .game_mode_menu:{
+				render_menu(new_input);
 			}	
 		}
 
-		audio_wall_clock:=win32_get_wall_clock()
 
-		//This means from the beggining of the frame to the time we calculate audio
-		from_begin_to_audio_seconds := win32_get_seconds_elapsed(flip_wall_clock, audio_wall_clock)
+		byte_to_lock, byte_to_write := calculate_sound_bytes_to_write(&sound_output, &sound_is_valid, sound_bytes_per_frame, last_counter)
 
-		play_cursor, write_cursor : DWORD
-
-		if SUCCEEDED(secondary_buff->GetCurrentPosition(&play_cursor, &write_cursor)) {
-
-			if !sound_is_valid {
-				sound_output.running_sample_index = write_cursor / sound_output.bytes_per_sample
-				sound_is_valid = true
-			}
-
-			byte_to_lock:DWORD = (sound_output.running_sample_index * sound_output.bytes_per_sample) % sound_output.secondary_buffer_size
-
-			seconds_left_until_flip :f32= monitor_seconds_per_frame - from_begin_to_audio_seconds
-
-			bytes_until_flip := DWORD((seconds_left_until_flip / monitor_seconds_per_frame) * f32(sound_bytes_per_frame))
-
-			frame_boundry_byte:= play_cursor + bytes_until_flip
-
-			safe_write_cursor := write_cursor
-
-			if safe_write_cursor < play_cursor {
-				safe_write_cursor += sound_output.secondary_buffer_size
-			}
-
-			assert(safe_write_cursor >= play_cursor)
-			safe_write_cursor += sound_output.safety_bytes
+		game_get_sound_buffer(&platform.sound_buffer)
+		fill_sound_buffer(&sound_output, byte_to_lock, byte_to_write, &platform.sound_buffer)
 
 
-			target_cursor:DWORD=0
-
-		    //Might not need this
-		    audio_card_low_latency:= safe_write_cursor < frame_boundry_byte
-
-		    if audio_card_low_latency {
-		    	target_cursor = (frame_boundry_byte + u32(sound_bytes_per_frame))
-		    }
-
-		    target_cursor = write_cursor + u32(sound_bytes_per_frame) + sound_output.safety_bytes
-
-		    target_cursor = target_cursor % sound_output.secondary_buffer_size
-
-		    byte_to_write :DWORD= 0
-
-		    if byte_to_lock > target_cursor{
-				byte_to_write = (sound_output.secondary_buffer_size - byte_to_lock) //region 1
-				byte_to_write += target_cursor //region 2
-			}else{
-				byte_to_write = target_cursor - byte_to_lock //region 1
-			}
-
-			platform.sound_buffer = {}
-			platform.sound_buffer.samples_per_second = sound_output.samples_per_second
-			platform.sound_buffer.sample_count = byte_to_write / sound_output.bytes_per_sample
-			platform.sound_buffer.samples = samples
-
-			game_get_sound_buffer(&platform.sound_buffer)
-
-			fill_sound_buffer(&sound_output, byte_to_lock, byte_to_write, &platform.sound_buffer)
-		}
-
-		work_counter := win32_get_wall_clock()
-		work_seconds_elapsed:= win32_get_seconds_elapsed(last_counter,work_counter); 
-
-		seconds_elapsed_for_frame:f32 = work_seconds_elapsed;
-
-		if seconds_elapsed_for_frame < monitor_seconds_per_frame {
-			if sleep_is_granular {
-				sleep_ms:= cast(DWORD)(1000.0 * (monitor_seconds_per_frame - seconds_elapsed_for_frame));
-				if sleep_ms>0.0{
-					Sleep(sleep_ms); 
-				}
-			} 
-
-			test_seconds_elapsed_for_frame:= win32_get_seconds_elapsed(last_counter, win32_get_wall_clock());
-
-			for seconds_elapsed_for_frame < monitor_seconds_per_frame{
-				seconds_elapsed_for_frame = win32_get_seconds_elapsed(last_counter, win32_get_wall_clock());
-			}
-		}
+		sleep_till_frame_end(last_counter)
+		display_buffer_in_window(window, 0, 0)
 		last_counter = win32_get_wall_clock();
-
-		hdc = GetDC(window) 
-		display_buffer_in_window(&back_buffer, hdc, 0, 0)
-		ReleaseDC(window, hdc)
-
-		flip_wall_clock = win32_get_wall_clock()
-
-		new_input,
-		old_input = old_input, new_input
+		new_input, old_input = old_input, new_input
 	}
 	return
 }
