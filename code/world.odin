@@ -13,46 +13,46 @@ TILE_COUNT_PER_HEIGHT::10
 v2_f32::[2]f32
 v2_i32::[2]i32
 WorldPosition::struct{
-    chunk_pos :v2_i32,
-    offset    :v2_f32,
+  chunk_pos :v2_i32,
+  offset    :v2_f32,
 }
 
 EntityNode::struct{
-    entity_index :u32,
-    next         :^EntityNode,
+  entity_index :u32,
+  next         :^EntityNode,
 }
 
 WorldChunk::struct{
-    chunk_pos     :v2_i32,
-    player_offset :v2_f32,
-    entity_count  :u32,
-    player_index  :u32,
-    tiles         :[TILE_COUNT_PER_WIDTH][TILE_COUNT_PER_HEIGHT]Tile,
-    node          :^EntityNode,
-    next          :^WorldChunk,
-    tile_path     :^TileNode,
-    completed     :b8,
+  chunk_pos     :v2_i32,
+  player_offset :v2_f32,
+  entity_count  :u32,
+  player_index  :u32,
+  tiles         :[TILE_COUNT_PER_WIDTH][TILE_COUNT_PER_HEIGHT]Tile,
+  node          :^EntityNode,
+  next          :^WorldChunk,
+  tile_path     :^TileNode,
+  completed     :b8,
 }
 
 World::struct{
-    chunk_size_in_meters : v2_f32,
-    chunk_hash           :[128]WorldChunk,
-    meters_to_pixels     :u32,
+  chunk_size_in_meters : v2_f32,
+  chunk_hash           :[128]WorldChunk,
+  meters_to_pixels     :u32,
 }
 
 
 add_flag::#force_inline proc(val:^u32, flag:u32){
-    val:=val
-    val^ |= flag
+  val:=val
+  val^ |= flag
 }
 
 is_flag_set::#force_inline proc(val:u32, flag:u32)->b32{
-    return b32(val & flag)
+  return b32(val & flag)
 }
 
 clear_flag::#force_inline proc(val:^u32, flag:u32){
-    val:=val
-    val^ &= ~flag
+  val:=val
+  val^ &= ~flag
 }
 
 //HEADER END
@@ -62,32 +62,32 @@ initilize_chunk_tiles::proc(world:^World, chunk:^WorldChunk){
    for tile, y in &row{
     tile.color = v4{1,1,1,1}
     tile.tile_pos  =  v2_i32{i32(x),i32(y)} 
-   }
- }
+  }
+}
 }
 
 //TODO: Check if the next, node and entity_count is zero by default
 add_new_chunk::proc(arena:^MemoryArena, world:^World, head:^WorldChunk, chunk_pos:v2_i32 )->(new_chunk:^WorldChunk){
-    new_chunk = push_struct(arena, WorldChunk)
-    new_chunk.chunk_pos = chunk_pos
-    new_chunk.next = nil
-    new_chunk.node = push_struct(&platform.arena,EntityNode)
-    new_chunk.entity_count = 0;
+  new_chunk = push_struct(arena, WorldChunk)
+  new_chunk.chunk_pos = chunk_pos
+  new_chunk.next = nil
+  new_chunk.node = push_struct(&platform.arena,EntityNode)
+  new_chunk.entity_count = 0;
 
-    curr:=head
-    for curr.next != nil{
-        curr = curr.next
-    }
-    curr.next = new_chunk
-    initilize_chunk_tiles(world, new_chunk)
-    return
+  curr:=head
+  for curr.next != nil{
+    curr = curr.next
+  }
+  curr.next = new_chunk
+  initilize_chunk_tiles(world, new_chunk)
+  return
 }
 
 /* 
   Basically a hashmap indexing,
   Additionally if there's no chunk then it adds one
-*/
-get_world_chunk::proc(world:^World, chunk_pos:v2_i32 ,arena:^MemoryArena = nil)->^WorldChunk{
+  */
+  get_world_chunk::proc(world:^World, chunk_pos:v2_i32 ,arena:^MemoryArena = nil)->^WorldChunk{
 
     hash := 19 * abs(chunk_pos.x) + 7 + abs(chunk_pos.y);
     hash_slot := hash % (len(world.chunk_hash) -1)
@@ -96,25 +96,25 @@ get_world_chunk::proc(world:^World, chunk_pos:v2_i32 ,arena:^MemoryArena = nil)-
     chunk:= head
 
     for chunk != nil{
-        if chunk_pos == chunk.chunk_pos{
-            break
-        }
-        if chunk.chunk_pos.x == TILE_CHUNK_UNINITILIZED{
-            chunk.chunk_pos = chunk_pos;
-            chunk.entity_count = 0
-            initilize_chunk_tiles(world, chunk)
-            break
-        }
-        chunk = chunk.next
+      if chunk_pos == chunk.chunk_pos{
+        break
+      }
+      if chunk.chunk_pos.x == TILE_CHUNK_UNINITILIZED{
+        chunk.chunk_pos = chunk_pos;
+        chunk.entity_count = 0
+        initilize_chunk_tiles(world, chunk)
+        break
+      }
+      chunk = chunk.next
     }
     if (chunk == nil) && (arena!= nil){
-        chunk = add_new_chunk(arena, world, head, chunk_pos)
+      chunk = add_new_chunk(arena, world, head, chunk_pos)
 
     }
     return chunk
-}
+  }
 
-change_entity_location::proc(arena:^MemoryArena, world:^World, entity_index:u32, entity:^LowEntity, new_p:WorldPosition){
+  change_entity_location::proc(arena:^MemoryArena, world:^World, entity_index:u32, entity:^LowEntity, new_p:WorldPosition){
 
   //removing the old entity from the chunk
 
@@ -124,7 +124,7 @@ change_entity_location::proc(arena:^MemoryArena, world:^World, entity_index:u32,
     if old_p.chunk_pos.x != TILE_CHUNK_UNINITILIZED{
       chunk := get_world_chunk(world, old_p.chunk_pos, arena)
       assert(chunk != nil)
-          assert(chunk.node != nil)
+      assert(chunk.node != nil)
 
       node := chunk.node
       if node.entity_index == entity_index{
@@ -162,7 +162,7 @@ initilize_world::proc(world:^World, buffer_width:i32, buffer_height:i32){
 
  for chunk in &world.chunk_hash{
   chunk.chunk_pos.x = TILE_CHUNK_UNINITILIZED
- }
+}
 }
 
 adjust_world_position::proc(world:^World, chunk_pos:^i32, offset:^f32, csim:f32){
@@ -198,7 +198,7 @@ update_camera::proc(game_state:^GameState, camera_ddp:v2_f32){
     animation.ddp    = camera_ddp * csim 
     animation.completed = 0
   }
- }else{
+}else{
   if animation.completed > 100{
     animation^ = Animation{}
 
@@ -210,7 +210,7 @@ update_camera::proc(game_state:^GameState, camera_ddp:v2_f32){
     game_state.camera_p = map_into_world_pos(game_state.world, game_state.camera_p, diff_to_add)
     animation.completed += 5
   }
- }
+}
 }
 
 subtract::proc(world:^World, a:WorldPosition, b:WorldPosition)->v2_f32{
@@ -232,6 +232,13 @@ get_chunk_and_tile::proc(world:^World , pos:WorldPosition )->(chunk:^WorldChunk,
   y := cast(i32)libc.roundf(pos.offset.y);
   tile = &chunk.tiles[x+ 8][y + 4];
   return; 
+}
+
+get_tile_from_chunk::proc(chunk: ^WorldChunk, pos: v2_f32)->^Tile{
+  x := i32(pos.x)
+  y := i32(pos.y)
+  tile := &chunk.tiles[x+ 8][y + 4];
+  return tile
 }
 
 

@@ -6,121 +6,121 @@ import mem "core:mem"
 foreign import opengl32 "system:Opengl32.lib"
 
 foreign opengl32{
-	//glTexEnvi::proc(target:u32 , pname:u32, param:i32)---
-	glTexImage2D::proc(target:u32, level:i32, internalformat:i32, width:i32, height:i32, border:i32, format:i32, type:u32, pixels:rawptr)---
+    //glTexEnvi::proc(target:u32 , pname:u32, param:i32)---
+    glTexImage2D::proc(target:u32, level:i32, internalformat:i32, width:i32, height:i32, border:i32, format:i32, type:u32, pixels:rawptr)---
 }
 
 
 OpenglContext::struct{
-	tex_handle:u32,
-	vbo        :u32,
-	vao        :u32,
-	ebo        :u32,
+    tex_handle:u32,
+    vbo        :u32,
+    vao        :u32,
+    ebo        :u32,
 }
 
 OpenglInfo::struct{
-	modern_context:b8,
-	vendor:string,
-	renderer: string,
-	version: string,
-	shading_version: string,
-	extensions: string,
+    modern_context:b8,
+    vendor:string,
+    renderer: string,
+    version: string,
+    shading_version: string,
+    extensions: string,
 
-	GL_EXT_texture_sRGB:b8,
-	GL_EXT_framebuffer_sRGB:b8,
-	GL_ARB_framebuffer_object:b8,
+    GL_EXT_texture_sRGB:b8,
+    GL_EXT_framebuffer_sRGB:b8,
+    GL_ARB_framebuffer_object:b8,
 }
 
 OpenglConfig::struct{
-	basic_light_program:u32,
-	default_internal_text_format:u32,
-	texture_sampler_id:u32,
-	transform_id:i32,
-	light_pos_id:i32,
-	use_light:i32,
-	tile_uniform:i32,
-	use_light_local:b8,
+    basic_light_program:u32,
+    default_internal_text_format:u32,
+    texture_sampler_id:u32,
+    transform_id:i32,
+    light_pos_id:i32,
+    use_light:i32,
+    tile_uniform:i32,
+    use_light_local:b8,
 }
 
 opengl_get_info::proc()->OpenglInfo{
-	using gl
-	result:OpenglInfo  = {};
-	result.modern_context = true;
-	result.vendor   = cast(string)GetString(VENDOR);
-	result.renderer = cast(string)GetString(RENDERER);
-	result.version  = cast(string)GetString(VERSION);
-	result.shading_version = cast(string)GetString(SHADING_LANGUAGE_VERSION);
+    using gl
+    result:OpenglInfo  = {};
+    result.modern_context = true;
+    result.vendor   = cast(string)GetString(VENDOR);
+    result.renderer = cast(string)GetString(RENDERER);
+    result.version  = cast(string)GetString(VERSION);
+    result.shading_version = cast(string)GetString(SHADING_LANGUAGE_VERSION);
 
-	if(result.modern_context){
-	}else{
-		result.shading_version = "(none)";
-	}
-	result.extensions = cast(string)GetString(EXTENSIONS);
-	return result
+    if(result.modern_context){
+    }else{
+	result.shading_version = "(none)";
+    }
+    result.extensions = cast(string)GetString(EXTENSIONS);
+    return result
 }
 
 opengl_create_program::proc(vertex_shader_code:cstring , fragment_shader_code:cstring)->u32{
-	vertex_shader_code := vertex_shader_code
-	fragment_shader_code:= fragment_shader_code
-	using gl
-	vertex_shader_id:u32 = CreateShader(VERTEX_SHADER);
-	ShaderSource(vertex_shader_id,1, &vertex_shader_code, nil);
-	CompileShader(vertex_shader_id);
+    vertex_shader_code := vertex_shader_code
+    fragment_shader_code:= fragment_shader_code
+    using gl
+    vertex_shader_id:u32 = CreateShader(VERTEX_SHADER);
+    ShaderSource(vertex_shader_id,1, &vertex_shader_code, nil);
+    CompileShader(vertex_shader_id);
 
 
-	fragment_shader_id:u32 = CreateShader(FRAGMENT_SHADER);
-	ShaderSource(fragment_shader_id,1,  &fragment_shader_code,nil);
-	CompileShader(fragment_shader_id);
+    fragment_shader_id:u32 = CreateShader(FRAGMENT_SHADER);
+    ShaderSource(fragment_shader_id,1,  &fragment_shader_code,nil);
+    CompileShader(fragment_shader_id);
 
-	program_id:u32 = CreateProgram();
-	AttachShader(program_id, vertex_shader_id);
-	AttachShader(program_id, fragment_shader_id);
-	LinkProgram(program_id);
-	ValidateProgram(program_id);
+    program_id:u32 = CreateProgram();
+    AttachShader(program_id, vertex_shader_id);
+    AttachShader(program_id, fragment_shader_id);
+    LinkProgram(program_id);
+    ValidateProgram(program_id);
 
-	linked:i32 = 0;
-	GetProgramiv(program_id, LINK_STATUS, &linked);
+    linked:i32 = 0;
+    GetProgramiv(program_id, LINK_STATUS, &linked);
 
-	if !bool(linked){
-		ignored:i32;
-		vertex_errors:[255]rune;
-		fragment_errors:[255]rune;
-		program_errors:[255]rune;
+    if !bool(linked){
+	ignored:i32;
+	vertex_errors:[255]rune;
+	fragment_errors:[255]rune;
+	program_errors:[255]rune;
 
-		GetShaderInfoLog(vertex_shader_id, 255, &ignored, cast([^]u8)&vertex_errors[0]);
-		GetShaderInfoLog(fragment_shader_id, 255, &ignored, cast([^]u8)&fragment_errors[0]);
-		GetProgramInfoLog(program_id, 255, &ignored, cast([^]u8)&program_errors[0]);
-		assert(1==0)
-	}
-	return program_id;
+	GetShaderInfoLog(vertex_shader_id, 255, &ignored, cast([^]u8)&vertex_errors[0]);
+	GetShaderInfoLog(fragment_shader_id, 255, &ignored, cast([^]u8)&fragment_errors[0]);
+	GetProgramInfoLog(program_id, 255, &ignored, cast([^]u8)&program_errors[0]);
+	assert(1==0)
+    }
+    return program_id;
 }
 
 opengl_init::proc(modern_context:b8){
-	using gl
-	info:=opengl_get_info()
-	opengl_config.default_internal_text_format = SRGB8_ALPHA8
-	Enable(FRAMEBUFFER_SRGB)
-	//glTexEnvi(TEXTURE_ENV, TEXTURE_ENV_MODE, MODULATE)
+    using gl
+    info:=opengl_get_info()
+    opengl_config.default_internal_text_format = SRGB8_ALPHA8
+    Enable(FRAMEBUFFER_SRGB)
+    //glTexEnvi(TEXTURE_ENV, TEXTURE_ENV_MODE, MODULATE)
 
-	frag,_ := os.read_entire_file_from_filename("frag.glsl")
-	vert,_ := os.read_entire_file_from_filename("vert.glsl")
+    frag,_ := os.read_entire_file_from_filename("frag.glsl")
+    vert,_ := os.read_entire_file_from_filename("vert.glsl")
 
-	opengl_config.basic_light_program = opengl_create_program(cstring(&vert[0]), cstring(&frag[0]))
-	opengl_config.transform_id = GetUniformLocation(opengl_config.basic_light_program, "mat");
-	opengl_config.tile_uniform = GetUniformLocation(opengl_config.basic_light_program, "tiles");
+    opengl_config.basic_light_program = opengl_create_program(cstring(&vert[0]), cstring(&frag[0]))
+    opengl_config.transform_id = GetUniformLocation(opengl_config.basic_light_program, "mat");
+    opengl_config.tile_uniform = GetUniformLocation(opengl_config.basic_light_program, "tiles");
 
-	opengl_config.light_pos_id = GetUniformLocation(opengl_config.basic_light_program, "light_pos");
-	opengl_config.use_light = GetUniformLocation(opengl_config.basic_light_program, "use_light");
+    opengl_config.light_pos_id = GetUniformLocation(opengl_config.basic_light_program, "light_pos");
+    opengl_config.use_light = GetUniformLocation(opengl_config.basic_light_program, "use_light");
 
-	Enable(BLEND);
-	BlendFunc(ONE, ONE_MINUS_SRC_ALPHA);
-	BlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
-	//LineWidth(1);
-	UseProgram(opengl_config.basic_light_program)
+    Enable(BLEND);
+    BlendFunc(ONE, ONE_MINUS_SRC_ALPHA);
+    BlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
+    //LineWidth(1);
+    UseProgram(opengl_config.basic_light_program)
 
 
-	//TODO: Put this in game_render proc
-	/*
+    //TODO: Put this in game_render proc
+    /*
 	*/
 }
 
@@ -199,15 +199,15 @@ opengl_update_vertex_data::proc(gl_context:^OpenglContext , min_p:v2_f32 , max_p
 	}
 }
 
-opengl_bitmap::proc(image:^LoadedBitmap, min_x:f32, min_y:f32 , width:f32 , height:f32){
+opengl_bitmap::proc(image:^LoadedBitmap, min_p:v2_f32 , size: v2_f32){
 	using gl
-	max_x  := min_x + width;
-	max_y  := min_y + height;
+	max_p  := min_p + size;
 
 	if(image.gl_context.tex_handle == 0){
-		opengl_init_texture(&image.gl_context, v2_f32{min_x, min_y}, v2_f32{max_x, max_y}, v4{1,1,1,1}, image.width, image.height, image);
+		opengl_init_texture(&image.gl_context, min_p, max_p, v4{1,1,1,1}, image.width, image.height, image);
+
 	}else{
-		opengl_update_vertex_data(&image.gl_context, v2_f32{min_x, min_y}, v2_f32{max_x, max_y});
+	    opengl_update_vertex_data(&image.gl_context, min_p, max_p);
 	}
 	DrawElements(TRIANGLES, 6, UNSIGNED_INT, rawptr((nil)));
 }

@@ -15,12 +15,15 @@ EntityType::enum{
   entity_type_null,
   entity_type_player,
   entity_type_npc,
+  entity_type_enemy,
+  entity_type_floor,
   entity_type_wall,
   entity_type_temple,
   entity_type_grass,
   entity_type_fire_torch,
   entity_type_tile, //NOTE: based
   entity_type_number,
+  entity_type_background,
   entity_type_letter,
 }
 
