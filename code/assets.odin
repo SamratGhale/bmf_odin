@@ -15,16 +15,17 @@ LoadedBitmap::struct #packed{
 }
 
 BmpAsset_Enum::enum{
-  asset_background,
-  asset_player_left,
-  asset_player_right,
-  asset_player_back,
-  asset_enemy,
-  asset_wall,
-  asset_grass,
-  asset_banner_tile,
-  asset_fire_torch,
-  asset_floor,
+    asset_background,
+    asset_player_left,
+    asset_player_right,
+    asset_player_back,
+    asset_enemy,
+    asset_wall,
+    asset_grass,
+    asset_tree,
+    asset_banner_tile,
+    asset_fire_torch,
+    asset_floor,
 }
 
 BmpAsset::struct{
@@ -79,7 +80,7 @@ get_bmp_asset::proc(asset:^BmpAsset, id:BmpAsset_Enum)->^LoadedBitmap{
   if bitmap.pixels == nil{
     switch id{
       case .asset_background:
-      parse_png_to_bmp("../data/green_background.png", bitmap)
+      parse_png_to_bmp("../data/brown_background.png", bitmap)
       case .asset_player_left:
       parse_png_to_bmp("../data/player/left.png", bitmap)
       case .asset_player_right:
@@ -90,6 +91,8 @@ get_bmp_asset::proc(asset:^BmpAsset, id:BmpAsset_Enum)->^LoadedBitmap{
       parse_png_to_bmp("../data/tex_wall.png", bitmap)
       case .asset_grass:
       parse_png_to_bmp("../data/grass.png", bitmap)
+      case .asset_tree:
+      parse_png_to_bmp("../data/tree.png", bitmap)
       case .asset_banner_tile:
       parse_png_to_bmp("../data/border.png", bitmap)
       case .asset_fire_torch:
@@ -97,7 +100,7 @@ get_bmp_asset::proc(asset:^BmpAsset, id:BmpAsset_Enum)->^LoadedBitmap{
       case .asset_floor:
       parse_png_to_bmp("../data/tex_floor.png", bitmap)
       case .asset_enemy:
-      parse_png_to_bmp("../data/tex_stupa.png", bitmap)
+      parse_png_to_bmp("../data/enemy_001.png", bitmap)
     }
   }
   return bitmap

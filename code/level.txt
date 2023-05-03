@@ -1,0 +1,3 @@
+entity_type_player,
+background_image = '../data/background_level1.png"
+

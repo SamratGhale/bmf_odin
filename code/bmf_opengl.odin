@@ -18,6 +18,7 @@ OpenglContext::struct{
     ebo        :u32,
 }
 
+
 OpenglInfo::struct{
     modern_context:b8,
     vendor:string,
@@ -55,7 +56,7 @@ opengl_get_info::proc()->OpenglInfo{
     }else{
 	result.shading_version = "(none)";
     }
-    result.extensions = cast(string)GetString(EXTENSIONS);
+    //result.extensions = cast(string)GetString(EXTENSIONS);
     return result
 }
 
@@ -122,6 +123,17 @@ opengl_init::proc(modern_context:b8){
     //TODO: Put this in game_render proc
     /*
 	*/
+}
+
+opengl_toggle_light::proc(){
+    using gl
+    Uniform1i(opengl_config.use_light, i32(opengl_config.use_light_local))
+
+    if (opengl_config.use_light_local) {
+	opengl_config.use_light_local = false;
+    } else {
+	opengl_config.use_light_local = true;
+    }
 }
 
 

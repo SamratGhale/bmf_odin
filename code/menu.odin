@@ -87,13 +87,14 @@ render_menu::proc(input:^GameInput){
     }
 
 
-    background_png := get_bmp_asset(&platform.bmp_asset, BmpAsset_Enum.asset_background)
-    opengl_bitmap(background_png, v2_f32{0, 0}, v2_f32{f32(background_png.width), f32(background_png.height)})
-
-    show_menu(state)
 
     for controller in input.controllers{
 	using ButtonEnum;
+	using GameMode
+
+	if was_down(escape, controller) {
+	    platform.game_mode = GameMode.game_mode_play
+	}
 
 	if was_down(action_down, controller){
 	    if state.selected < 3 {
@@ -108,7 +109,24 @@ render_menu::proc(input:^GameInput){
 	    }
 	    state.click = true
 	}
+
+	if(was_down(enter, controller)){
+	    switch(state.selected){
+	    case 3:{
+		platform.game_mode = GameMode.game_mode_play
+	    }
+	    case 2:{
+		platform.running = false
+	    }
+	    }
+	}
     }
+
+
+    background_png := get_bmp_asset(&platform.bmp_asset, BmpAsset_Enum.asset_background)
+    opengl_bitmap(background_png, v2_f32{0, 0}, v2_f32{f32(background_png.width), f32(background_png.height)})
+
+    show_menu(state)
 }
 
 

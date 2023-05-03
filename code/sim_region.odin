@@ -23,6 +23,7 @@ EntityType::enum{
   entity_type_fire_torch,
   entity_type_tile, //NOTE: based
   entity_type_number,
+    entity_type_tree,
   entity_type_background,
   entity_type_letter,
 }
@@ -115,11 +116,6 @@ begin_sim::proc(sim_arena:^MemoryArena, game_state:^GameState, center:WorldPosit
         for node != nil && node.entity_index != 0{
           entity := &game_state.low_entities[node.entity_index]
           entity_sim_space := subtract(world, entity.pos, sim_region.center)
-
-          if(entity_sim_space.x <= -16 ){
-           a := 100; 
-           fmt.println("APple pie")
-          }
 
           if is_in_rectangle(sim_region.bounds, entity_sim_space) {
 
