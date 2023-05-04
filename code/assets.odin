@@ -26,6 +26,7 @@ BmpAsset_Enum::enum{
     asset_banner_tile,
     asset_fire_torch,
     asset_floor,
+    asset_door,
 }
 
 BmpAsset::struct{
@@ -101,6 +102,8 @@ get_bmp_asset::proc(asset:^BmpAsset, id:BmpAsset_Enum)->^LoadedBitmap{
       parse_png_to_bmp("../data/tex_floor.png", bitmap)
       case .asset_enemy:
       parse_png_to_bmp("../data/enemy_001.png", bitmap)
+      case .asset_door:
+        parse_png_to_bmp("../data/door.png", bitmap)
     }
   }
   return bitmap

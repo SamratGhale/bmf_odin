@@ -14,7 +14,9 @@ Animation::struct{
 EntityType::enum{
   entity_type_null,
   entity_type_player,
+  entity_type_string,
   entity_type_npc,
+  entity_type_door,
   entity_type_enemy,
   entity_type_floor,
   entity_type_wall,
@@ -22,10 +24,8 @@ EntityType::enum{
   entity_type_grass,
   entity_type_fire_torch,
   entity_type_tile, //NOTE: based
-  entity_type_number,
-    entity_type_tree,
+  entity_type_tree,
   entity_type_background,
-  entity_type_letter,
 }
 
 
@@ -39,7 +39,6 @@ EntityFlags::enum {
 v4::struct{r,g,b,a:f32}
 rec2:: distinct matrix[2,2]f32
 
-value::union { i64, f64, }
 
 SimEntity::struct{
   type:EntityType,
@@ -57,9 +56,11 @@ SimEntity::struct{
   flags:u32,
   face_direction:i8,
 
-  val:value,
+  texture : union{
+    ^LoadedBitmap,
+    string
+  }
 
-  texture:^LoadedBitmap,
   animation:^Animation, //Curently used for player
 };
 

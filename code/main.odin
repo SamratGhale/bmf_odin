@@ -99,6 +99,8 @@ window_callback:: proc(window: win32.HWND , message: win32.UINT , WParam:win32.W
 
 	width, height := get_window_dimention(window)
 	platform.window_dim = v2_i32{width, height}
+	platform.center.x = f32(platform.window_dim.x) /2.0
+	platform.center.y = f32(platform.window_dim.y) /2.0
 
 	paint: PAINTSTRUCT
 	BeginPaint(window, &paint)
@@ -473,8 +475,7 @@ render_debug_info::proc(){
     mtop :i32= 1
     min_x, min_y:f32
 
-    center_x := f32(platform.window_dim.x)  * 0.3;
-    center_y := f32(platform.window_dim.y);
+	center :=platform.center
 
     font:=platform.font_asset
 
@@ -489,8 +490,8 @@ render_debug_info::proc(){
 	if bmp != nil{
 	    tex_width  := 20// bmp.image.width  * mtop;
 	    tex_height := 20//bmp.image.height * mtop;
-	    min_x = (center_x + f32(offset))
-	    min_y = (center_y) -f32(bmp.image.height) - bmp.y_offset - font.line_advance
+	    min_x = (center.x + f32(offset))
+	    min_y = (center.y) -f32(bmp.image.height) - bmp.y_offset - font.line_advance
 	    opengl_bitmap(&bmp.image, v2_f32{min_x, min_y}, v2_f32{f32(tex_width), f32(tex_height)});
 	}
 
@@ -522,6 +523,9 @@ main:: proc(){
 
     RegisterClassW(&window_class)
 
+	width  := GetSystemMetrics(SM_CXSCREEN)
+	height := GetSystemMetrics(SM_CYSCREEN)
+
     window:= win32.CreateWindowExW(
 	dwExStyle = {},
 	lpClassName = window_class.lpszClassName,
@@ -529,8 +533,8 @@ main:: proc(){
 	dwStyle = win32.WS_VISIBLE | win32.WS_OVERLAPPEDWINDOW,
 	X = win32.CW_USEDEFAULT,
 	Y = win32.CW_USEDEFAULT,
-	nWidth  = 1744,
-	nHeight = 1119,
+	nWidth  = width,
+	nHeight = height,
 	hWndParent = nil,
 	hMenu = nil,
 	lpParam = nil,
@@ -560,9 +564,10 @@ main:: proc(){
 
 
     //Platform initilization
+
     platform.permanent_size = Gigabytes*1
     platform.temp_size      = Gigabytes*1
-    platform.game_mode      = GameMode.game_mode_debug
+    platform.game_mode      = GameMode.game_mode_play
     platform.total_size     = platform.permanent_size + platform.temp_size
     //Zero memory is false now but we might need to change it to true
     platform.permanent_storage = cast(^u8)os.heap_alloc(int(platform.total_size), false)

@@ -31,6 +31,9 @@ WorldChunk::struct{
   node          :^EntityNode,
   next          :^WorldChunk,
   tile_path     :^TileNode,
+
+  top_banner    :Banner,
+  door_index    :u32,  //use better method, maybe array maybe nothing at all
   completed     :b8,
 }
 
@@ -63,6 +66,10 @@ initilize_chunk_tiles::proc(world:^World, chunk:^WorldChunk){
     tile.color = v4{1,1,1,1}
     tile.tile_pos  =  v2_i32{i32(x),i32(y)} 
   }
+}
+
+for btile in &chunk.top_banner.banners{
+  btile.is_empty = true
 }
 }
 

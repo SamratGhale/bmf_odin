@@ -181,6 +181,7 @@ PlatformState::struct{
     sound_asset          :SoundAsset,
     sound_buffer         :GameSoundOutputBuffer,
     window_dim           :v2_i32,
+    center               :v2_f32, //this is just half of window_dim but we need to calculate it more often and we need it in f32
     monitor_refresh_rate :int, 
 
     //Can we only have this on debug_mode on
