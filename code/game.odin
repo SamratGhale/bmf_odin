@@ -30,6 +30,7 @@ GameState :: struct {
 	curr_chunk:               v2_i32,
 	first_playing_sound:      ^PlayingSound,
 	first_free_playing_sound: ^PlayingSound,
+	player_index              :u32,
 }
 //End definations 
 
@@ -131,7 +132,7 @@ add_wall :: proc( game_state: ^GameState, chunk_pos: v2_i32, offset: v2_f32,) ->
 	add_flag(&tile.flags, u32(TileFlags.tile_occoupied))
 	return
 }
-add_door:: proc( game_state: ^GameState, chunk_pos: v2_i32, offset: v2_f32,) -> ( low: ^LowEntity, entity_index: u32,) {
+add_door:: proc( game_state: ^GameState, chunk_pos: v2_i32, offset: v2_f32,points_to: WorldPosition) -> ( low: ^LowEntity, entity_index: u32) {
 
 	texture := get_bmp_asset(&platform.bmp_asset, BmpAsset_Enum.asset_door)
 	pos := WorldPosition{chunk_pos, offset}
@@ -143,8 +144,30 @@ add_door:: proc( game_state: ^GameState, chunk_pos: v2_i32, offset: v2_f32,) -> 
 	low.sim.texture = texture
 	low.sim.collides = true
 	low.sim.animation = push_struct(&platform.arena, Animation)
-	_, tile := get_chunk_and_tile(game_state.world, pos)
-	add_flag(&tile.flags, u32(TileFlags.tile_occoupied))
+	chunk, tile := get_chunk_and_tile(game_state.world, pos)
+
+	new_node := push_struct(&platform.arena, EntityNode)
+	new_node.entity_index = entity_index
+
+	if tile.entities == nil {
+		tile.entities = new_node
+	} else {
+		curr := tile.entities
+		for curr.next != nil {
+			curr = curr.next
+		}
+		curr.next = new_node
+	}
+
+	add_flag(&tile.flags, u32(TileFlags.tile_door))
+
+	for door in &chunk.doors{
+		if(door.entity_index == 0){
+			door.points_to = points_to
+			door.entity_index = entity_index
+			break;
+		}
+	}
 	return
 }
 
@@ -161,8 +184,11 @@ add_walls_around_chunk_pos :: proc(game_state: ^GameState, chunk_pos: v2_i32) {
 	for y in -3 ..= 3 {
 		add_wall(game_state, chunk_pos, v2_f32{-7, f32(y)})
 		if(y  == 2){
-			_, index := add_door(game_state, chunk_pos, v2_f32{7, f32(y)})
-			chunk.door_index =  index
+			teleport: WorldPosition;
+			teleport.chunk_pos = {1,0}
+			teleport.offset = {0,0}
+
+			add_door(game_state, chunk_pos, v2_f32{7, f32(y)}, teleport)
 		}else{
 			add_wall(game_state, chunk_pos, v2_f32{7, f32(y)})
 		}
@@ -333,7 +359,7 @@ sort_entities_for_render :: proc(
 	max_chunk_pos := map_into_world_pos(world, camera_pos, cam_bounds[1]).chunk_pos
 
 	chunk := get_world_chunk(world, game_state.curr_chunk)
-	player_low := game_state.low_entities[chunk.player_index]
+	player_low := game_state.low_entities[game_state.player_index]
 
 	mtop := v2_f32{f32(world.meters_to_pixels), f32(world.meters_to_pixels)}
 	//center := world.chunk_size_in_meters * mtop * 0.5 
@@ -531,11 +557,16 @@ update_enemy :: proc(game_state: ^GameState, entity: ^SimEntity, low: ^LowEntity
 }
 
 check_level_complete::proc(game_state:^GameState, chunk:^WorldChunk, entity:^SimEntity, low:^LowEntity){
-	door := &game_state.low_entities[chunk.door_index]
-	door.sim.collides = false
-	_, tile := get_chunk_and_tile(game_state.world, door.pos)
-	clear_flag(&tile.flags, u32(TileFlags.tile_occoupied))
-	begin_entity_animation(&door.sim, v2_f32{0,1}, true)
+
+	for door in chunk.doors{
+		if(door.entity_index != 0){
+			door_low:= &game_state.low_entities[door.entity_index]
+			door_low.sim.collides = false
+			_, tile := get_chunk_and_tile(game_state.world, door_low.pos)
+			clear_flag(&tile.flags, u32(TileFlags.tile_occoupied))
+			begin_entity_animation(&door_low.sim, v2_f32{0,1}, true)
+		}
+	}
 }
 
 //TODO:: Make it simpler? or make it generic
@@ -595,6 +626,37 @@ update_player :: proc(
 
 				if is_flag_set(tile.flags, u32(tile_end)) {
 					check_level_complete(game_state, chunk, entity, low)
+				}else if(is_flag_set(tile.flags, u32(tile_door))){
+					//Time to change level
+
+					//the tile should have an entity connected which is in the chunk.doors
+
+					assert(tile.entities != nil)
+
+					curr := tile.entities
+					for (curr != nil){
+						for door in chunk.doors{
+							if door.entity_index == curr.entity_index{
+								//we found the door. door must be found
+								camera_ddp_i32 := door.points_to.chunk_pos - game_state.curr_chunk 
+
+								entity.changed_in_between = true
+								change_entity_location(&platform.arena, world, game_state.player_index, low, door.points_to)
+
+								camera_ddp :v2_f32;
+								camera_ddp.x = f32(camera_ddp_i32.x)
+								camera_ddp.y = f32(camera_ddp_i32.y)
+								update_camera(game_state, camera_ddp)
+							}
+						}
+						curr = curr.next
+					}
+
+
+
+
+
+
 				} else if is_flag_set(tile.flags, u32(tile_entity)) {
 					//go thru all the entities in the tile
 
@@ -626,13 +688,15 @@ update_player :: proc(
 
 				_, source_tile := get_chunk_and_tile(world, old_pos)
 
-				if is_flag_set(tile.flags, u32(tile_end)) {
+				if is_flag_set(source_tile.flags, u32(tile_end)) {
 
-					door := &game_state.low_entities[chunk.door_index]
-					door.sim.collides = true 
-					_, tile := get_chunk_and_tile(game_state.world, door.pos)
-					add_flag(&tile.flags, u32(TileFlags.tile_occoupied))
-					begin_entity_animation(&door.sim, v2_f32{0,-1}, true)
+					for door in chunk.doors{
+						door_low := &game_state.low_entities[door.entity_index]
+						door_low.sim.collides = true 
+						_, tile := get_chunk_and_tile(game_state.world, door_low.pos)
+						add_flag(&tile.flags, u32(TileFlags.tile_occoupied))
+						begin_entity_animation(&door_low.sim, v2_f32{0,-1}, true)
+					}
 
 				} else if is_flag_set(source_tile.flags, u32(tile_entity)) {
 					for btile in &chunk.top_banner.banners{
@@ -670,7 +734,7 @@ level_one_init :: proc(game_state: ^GameState) {
 level_two_init :: proc(game_state: ^GameState) {
 	chunk_pos: v2_i32 = {1, 0}
 	add_walls_around_chunk_pos(game_state, chunk_pos)
-	//add_enemy(game_state, chunk_pos, v2_f32{-4.0, 1.0})
+	add_enemy(game_state, chunk_pos, v2_f32{-4.0, 1.0})
 }
 
 all_level_init :: proc(game_state: ^GameState) {
@@ -747,17 +811,14 @@ render_game :: proc(input: ^GameInput) {
 		if was_down(action_up, controller) {camera_ddp.y = 1}
 		if was_down(Key_l, controller) {opengl_toggle_light()}
 
-		if chunk.player_index == 0 {
+		if game_state.player_index == 0 {
 
 			if ended_down(start, controller) {
 				_, index := add_player(game_state, v2_f32{0.0, 0.0})
-				chunk.player_index = index
+				game_state.player_index = index
 			}
 
 		} else {
-
-			low := game_state.low_entities[chunk.player_index]
-			entity := &low.sim
 
 			if controller.is_analog {
 

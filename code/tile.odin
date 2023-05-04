@@ -6,6 +6,7 @@ TileFlags :: enum {
 	tile_empty     = (1 << 3),
 	tile_entity    = (1 << 4),
 	tile_end       = (1 << 5),
+	tile_door      = (1 << 6),
 }
 
 Tile :: struct {

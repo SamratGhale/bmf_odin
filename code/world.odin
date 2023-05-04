@@ -23,18 +23,23 @@ EntityNode :: struct {
 	next         :^EntityNode,
 }
 
+Door::struct{
+	entity_index :u32,
+	//teleport
+	points_to    :WorldPosition,
+}
+
 WorldChunk :: struct {
 	chunk_pos     :v2_i32,
 	player_offset :v2_f32,
 	entity_count  :u32,
-	player_index  :u32,
 	tiles         :[TILE_COUNT_PER_WIDTH][TILE_COUNT_PER_HEIGHT]Tile,
+	top_banner    :Banner,
+	completed     :b8,
+	doors         :[4]Door,
 	node          :^EntityNode,
 	next          :^WorldChunk,
 	tile_path     :^TileNode,
-	top_banner    :Banner,
-	door_index    :u32, //use better method, maybe array maybe nothing at all
-	completed     :b8,
 }
 
 World :: struct {
@@ -192,8 +197,6 @@ initilize_world :: proc(world: ^World, buffer_width: i32, buffer_height: i32) {
 
 adjust_world_position :: proc(world: ^World, chunk_pos: ^i32, offset: ^f32, csim: f32) {
 	extra_offset := i32(libc.roundf(offset^ / f32(csim)))
-
-
 	chunk_pos^ += extra_offset
 	offset^ -= f32(f32(extra_offset) * csim)
 }
@@ -218,7 +221,6 @@ update_camera :: proc(game_state: ^GameState, camera_ddp: v2_f32) {
 	if !animation.is_active {
 		if camera_ddp != {0, 0} {
 			csim := game_state.world.chunk_size_in_meters
-
 			animation.is_active = true
 			animation.source = game_state.camera_p.offset
 			animation.dest += camera_ddp * csim
@@ -228,7 +230,6 @@ update_camera :: proc(game_state: ^GameState, camera_ddp: v2_f32) {
 	} else {
 		if animation.completed > 100 {
 			animation^ = Animation{}
-
 			game_state.camera_p.offset = {}
 			game_state.curr_chunk = game_state.camera_p.chunk_pos
 		} else {
@@ -267,15 +268,10 @@ get_chunk_and_tile :: proc(
 	x := cast(i32)libc.roundf(pos.offset.x)
 	y := cast(i32)libc.roundf(pos.offset.y)
 
+	pos := map_into_world_pos(world, pos, {})
+
 	chunk = get_world_chunk(world, pos.chunk_pos)
 
 	tile = &chunk.tiles[x + 8][y + 4]
 	return
-}
-
-get_tile_from_chunk :: proc(chunk: ^WorldChunk, pos: v2_f32) -> ^Tile {
-	x := i32(pos.x)
-	y := i32(pos.y)
-	tile := &chunk.tiles[x + 8][y + 4]
-	return tile
 }

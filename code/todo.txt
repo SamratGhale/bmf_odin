@@ -1,0 +1,1 @@
+when the player is in a tile_door then change the chunk to the points_to chunk

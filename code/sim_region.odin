@@ -58,9 +58,9 @@ SimEntity::struct{
 
   texture : union{
     ^LoadedBitmap,
-    string
-  }
-
+    string,
+  },
+  changed_in_between : bool,
   animation:^Animation, //Curently used for player
 };
 
@@ -149,7 +149,12 @@ end_sim::proc(region:^SimRegion, game_state:^GameState){
     if(old_pos.offset.y != new_world_p.offset.y || old_pos.offset.x != new_world_p.offset.x) ||
     (old_pos.chunk_pos.x != new_world_p.chunk_pos.x || old_pos.chunk_pos.y != new_world_p.chunk_pos.y){
 
-      change_entity_location(&platform.arena, region.world, entity.storage_index, low, new_world_p)
+      if !entity.changed_in_between{
+        change_entity_location(&platform.arena, region.world, entity.storage_index, low, new_world_p)
+      }else{
+        low.sim.changed_in_between = false
+        entity.changed_in_between = false
+      }
     }
   }
 }
