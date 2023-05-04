@@ -1,5 +1,4 @@
-@echo off
 if not exist ..\build mkdir ..\build
 pushd ..\build
-odin build ..\code -o:none -debug -out="./bmf.exe" 
+odin build ..\code -debug -show-timings -out="./bmf.exe" 
 popd

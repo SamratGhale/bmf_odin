@@ -350,6 +350,7 @@ sort_entities_for_render :: proc(
 
 		path_tile := get_bmp_asset(&platform.bmp_asset, BmpAsset_Enum.asset_floor)
 
+		/*
 		for x in -7.0 ..< f32(TILE_COUNT_PER_WIDTH / 2) {
 			for y in -3.0 ..< f32(TILE_COUNT_PER_HEIGHT / 2) {
 				tile := get_tile_from_chunk(chunk, v2_f32{x, y})
@@ -359,6 +360,7 @@ sort_entities_for_render :: proc(
 				}
 			}
 		}
+		*/
 
 	}
 
@@ -531,11 +533,8 @@ update_enemy :: proc(game_state: ^GameState, entity: ^SimEntity, low: ^LowEntity
 check_level_complete::proc(game_state:^GameState, chunk:^WorldChunk, entity:^SimEntity, low:^LowEntity){
 	door := &game_state.low_entities[chunk.door_index]
 	door.sim.collides = false
-
 	_, tile := get_chunk_and_tile(game_state.world, door.pos)
-
 	clear_flag(&tile.flags, u32(TileFlags.tile_occoupied))
-
 	begin_entity_animation(&door.sim, v2_f32{0,1}, true)
 }
 
@@ -627,7 +626,15 @@ update_player :: proc(
 
 				_, source_tile := get_chunk_and_tile(world, old_pos)
 
-				if is_flag_set(source_tile.flags, u32(tile_entity)) {
+				if is_flag_set(tile.flags, u32(tile_end)) {
+
+					door := &game_state.low_entities[chunk.door_index]
+					door.sim.collides = true 
+					_, tile := get_chunk_and_tile(game_state.world, door.pos)
+					add_flag(&tile.flags, u32(TileFlags.tile_occoupied))
+					begin_entity_animation(&door.sim, v2_f32{0,-1}, true)
+
+				} else if is_flag_set(source_tile.flags, u32(tile_entity)) {
 					for btile in &chunk.top_banner.banners{
 						if !btile.is_empty{
 							blow := &game_state.low_entities[btile.low_index]
@@ -656,7 +663,7 @@ level_one_init :: proc(game_state: ^GameState) {
 	add_walls_around_chunk_pos(game_state, v2_i32{0, 0})
 	add_enemy(game_state, v2_i32{0, 0}, v2_f32{-4.0, 1.0})
 	add_tree(game_state, v2_i32{0, 0}, v2_f32{4.0, -2.0})
-	add_entity_string(game_state, v2_i32{0, 0}, v2_f32{-2.0, -2.0}, "1")
+	add_entity_string(game_state, v2_i32{0, 0}, v2_f32{-2.0, -2.0}, "3")
 	add_fire_torch(game_state, v2_i32{0, 0},v2_f32{-6.0, 3.0})
 }
 
