@@ -19,8 +19,9 @@ void main(void){
     float dy = light_pos.y - (xy_pos.y + v_pos.y);
 
     float dist = sqrt(dx * dx + dy * dy);
-    float max_dist = 1000.0f;
+    float max_dist = 1200.0f;
     float percent = clamp(1.0f - dist / max_dist, 0.0, 1.0f);
+    percent *= percent;
     percent *= percent;
     vec3 ambient_light = vec3(percent, percent, percent);
 

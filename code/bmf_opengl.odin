@@ -125,14 +125,12 @@ opengl_init :: proc(modern_context: b8) {
 }
 
 opengl_toggle_light :: proc() {
-	using gl
-	Uniform1i(opengl_config.use_light, i32(opengl_config.use_light_local))
-
 	if (opengl_config.use_light_local) {
 		opengl_config.use_light_local = false
 	} else {
 		opengl_config.use_light_local = true
 	}
+	gl.Uniform1i(opengl_config.use_light, i32(opengl_config.use_light_local))
 }
 
 

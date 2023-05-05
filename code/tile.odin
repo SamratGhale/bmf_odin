@@ -10,7 +10,7 @@ TileFlags :: enum {
 }
 
 Tile :: struct {
-	tile_pos:     v2_i32,
+	tile_pos:     WorldPosition,
 	color:        v4,
 	initilized:   b8,
 	gl_Context:   OpenglContext,
@@ -24,14 +24,16 @@ TileNode :: struct {
 	next: ^TileNode,
 }
 
-append_tile :: proc(chunk: ^WorldChunk, new_tile: ^Tile, arena: ^MemoryArena) {
+//Use game_state instead
+
+append_tile :: proc(game_state: ^GameState, new_tile: ^Tile, arena: ^MemoryArena) {
 	add_flag(&new_tile.flags, u32(TileFlags.tile_path))
 
-	if chunk.tile_path == nil {
-		chunk.tile_path = push_struct(arena, TileNode)
-		chunk.tile_path.tile = new_tile
+	if game_state.tile_path == nil {
+		game_state.tile_path = push_struct(arena, TileNode)
+		game_state.tile_path.tile = new_tile
 	} else {
-		curr := chunk.tile_path
+		curr := game_state.tile_path
 		for curr.next != nil {
 			curr = curr.next
 		}

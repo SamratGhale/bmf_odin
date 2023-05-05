@@ -4,7 +4,7 @@ import "core:os"
 import "core:mem"
 import "core:fmt"
 import win32  "core:sys/windows"
-import libc "core:c/libc"
+import libc   "core:c/libc"
 import        "core:intrinsics"
 import stb_tt "vendor:stb/truetype"
 

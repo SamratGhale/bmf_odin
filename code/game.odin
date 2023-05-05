@@ -31,6 +31,7 @@ GameState :: struct {
 	first_playing_sound:      ^PlayingSound,
 	first_free_playing_sound: ^PlayingSound,
 	player_index              :u32,
+	tile_path     :^TileNode,
 }
 //End definations 
 
@@ -111,7 +112,7 @@ add_player :: proc( game_state: ^GameState, offset: v2_f32,) -> ( low: ^LowEntit
 	low.sim.animation = push_struct(&platform.arena, Animation)
 
 	_, tile := get_chunk_and_tile(game_state.world, pos)
-	append_tile(chunk, tile, &platform.arena)
+	append_tile(game_state, tile, &platform.arena)
 	return
 }
 
@@ -172,28 +173,42 @@ add_door:: proc( game_state: ^GameState, chunk_pos: v2_i32, offset: v2_f32,point
 }
 
 
-add_walls_around_chunk_pos :: proc(game_state: ^GameState, chunk_pos: v2_i32) {
+add_walls_around_chunk :: proc(game_state: ^GameState, chunk_pos: v2_i32, door_pos : [dynamic]v2_f32, door_teleport_pos:[dynamic]WorldPosition) {
+
+	assert(len(door_pos) == len(door_teleport_pos), "Each door should teleport to another place")
 	using BmpAsset_Enum
 
 	chunk := get_world_chunk(game_state.world, chunk_pos)
 
-	for x in -7 ..= 7 {
-		add_wall(game_state, chunk_pos, v2_f32{f32(x), -4})
-		add_wall(game_state, chunk_pos, v2_f32{f32(x), 4})
-	}
-	for y in -3 ..= 3 {
-		add_wall(game_state, chunk_pos, v2_f32{-7, f32(y)})
-		if(y  == 2){
-			teleport: WorldPosition;
-			teleport.chunk_pos = {1,0}
-			teleport.offset = {0,0}
+	half_count :v2_f32 
+	half_count.x = (TILE_COUNT_PER_WIDTH/2 -1)
+	half_count.y = (TILE_COUNT_PER_HEIGHT/2 -1)
 
-			add_door(game_state, chunk_pos, v2_f32{7, f32(y)}, teleport)
-		}else{
-			add_wall(game_state, chunk_pos, v2_f32{7, f32(y)})
+	for x in -half_count.x ..= half_count.x {
+		add_wall(game_state, chunk_pos, v2_f32{x, half_count.y})
+		add_wall(game_state, chunk_pos, v2_f32{x, -half_count.y})
+	}
+
+	door :bool= false
+	for y in -half_count.y ..= half_count.y {
+
+		add_wall(game_state, chunk_pos, v2_f32{-half_count.x, y})
+
+		door = false
+
+		for door_p in door_pos{
+			if (door_p == v2_f32{half_count.x, y}){
+				door = true
+			}
+		}
+		if(!door){
+			add_wall(game_state, chunk_pos, v2_f32{half_count.x, y})
 		}
 	}
-	//add_flag(&tile.flags, u32(TileFlags.tile_door))
+	for door_p,i in door_pos{
+		teleport := door_teleport_pos[i]
+		add_door(game_state, chunk_pos, door_p, teleport)
+	}
 }
 
 
@@ -438,6 +453,10 @@ sort_entities_for_render :: proc(
 											entity.texture.(^LoadedBitmap),
 											render_memory,
 										)
+
+										if(entity.type == .entity_type_fire_torch){
+											//gl.Uniform2f( opengl_config.light_pos_id, min_pos.x, min_pos.y,)
+										}
 									}
 								case .entity_type_string:
 									{
@@ -480,17 +499,24 @@ undo_player :: proc(game_state: ^GameState, low_entity: ^LowEntity, ddp: ^v2_f32
 	animation := low_entity.sim.animation
 
 	chunk := get_world_chunk(game_state.world, game_state.curr_chunk)
-	len := get_path_length(chunk.tile_path)
+	len := get_path_length(game_state.tile_path)
 
 	if (len > 1) && !animation.is_active {
-		curr_tile := get_last_tile(chunk.tile_path)
-		remove_last_tile(chunk.tile_path)
-		prev_tile := get_last_tile(chunk.tile_path)
+		curr_tile := get_last_tile(game_state.tile_path)
+		remove_last_tile(game_state.tile_path)
+		prev_tile := get_last_tile(game_state.tile_path)
 		assert(prev_tile != nil) // because we are checking this on the if block
-		diff := prev_tile.tile_pos - curr_tile.tile_pos
 
-		ddp.x = f32(diff.x)
-		ddp.y = f32(diff.y)
+		//add also the chunk difference
+
+		chunk_diff := prev_tile.tile_pos.chunk_pos - curr_tile.tile_pos.chunk_pos
+
+		chunk_diff *= v2_i32{TILE_COUNT_PER_WIDTH, TILE_COUNT_PER_HEIGHT}
+
+
+		ddp^ = prev_tile.tile_pos.offset - curr_tile.tile_pos.offset
+		//ddp.x += f32(chunk_diff.x)
+		//ddp.y += f32(chunk_diff.y)
 	}
 }
 
@@ -517,23 +543,25 @@ begin_entity_animation::proc(entity: ^SimEntity, ddp: v2_f32, forced:b8){
 update_entity_animation::proc(entity: ^SimEntity, low: ^LowEntity){
 
 	animation := entity.animation
-	start_pos := &entity.pos
+	if animation.is_active{
+		start_pos := &entity.pos
 
-	assert(animation != nil)
+		assert(animation != nil)
 
-	if animation.completed >= 100 {
-		animation.is_active = false
+		if animation.completed >= 100 {
+			animation.is_active = false
 
-		start_pos.x = libc.roundf(start_pos.x)
-		start_pos.y = libc.roundf(start_pos.y)
+			start_pos.x = libc.roundf(start_pos.x)
+			start_pos.y = libc.roundf(start_pos.y)
 
-		//chunk, tile := get_chunk_and_tile(world, low.pos)
-	} else {
-		chunk_diff := animation.ddp
-		diff_to_add := chunk_diff / 10.0
-		start_pos^ += diff_to_add
-		animation.completed += 10
-	}
+			//chunk, tile := get_chunk_and_tile(world, low.pos)
+		} else {
+			chunk_diff := animation.ddp
+			diff_to_add := chunk_diff / 10.0
+			start_pos^ += diff_to_add
+			animation.completed += 10
+		}
+	} 
 }
 
 update_enemy :: proc(game_state: ^GameState, entity: ^SimEntity, low: ^LowEntity) {
@@ -543,11 +571,15 @@ update_enemy :: proc(game_state: ^GameState, entity: ^SimEntity, low: ^LowEntity
 	if !animation.is_active {
 		ddp := animation.ddp
 
+		half_count :v2_f32 
+		half_count.x = (TILE_COUNT_PER_WIDTH/2 -2 )
+		half_count.y = (TILE_COUNT_PER_HEIGHT/2 -2)
+
 		if (ddp.x == 0 && ddp.y == 0) {
 			ddp = v2_f32{1, 0} //for starting
-		} else if (start_pos.x >= 6) {
+		} else if (start_pos.x >= half_count.x) {
 			ddp = v2_f32{-1, 0} //for starting
-		} else if (start_pos.x <= -6) {
+		} else if (start_pos.x <= -half_count.x) {
 			ddp = v2_f32{1, 0} //for starting
 		}
 		begin_entity_animation(entity, ddp, true)
@@ -558,10 +590,11 @@ update_enemy :: proc(game_state: ^GameState, entity: ^SimEntity, low: ^LowEntity
 
 check_level_complete::proc(game_state:^GameState, chunk:^WorldChunk, entity:^SimEntity, low:^LowEntity){
 
-	for door in chunk.doors{
+	for door in &chunk.doors{
 		if(door.entity_index != 0){
 			door_low:= &game_state.low_entities[door.entity_index]
 			door_low.sim.collides = false
+			door.is_open = true
 			_, tile := get_chunk_and_tile(game_state.world, door_low.pos)
 			clear_flag(&tile.flags, u32(TileFlags.tile_occoupied))
 			begin_entity_animation(&door_low.sim, v2_f32{0,1}, true)
@@ -585,17 +618,38 @@ update_player :: proc(
 
 	world := game_state.world
 
-	if ddp.x != 0 || ddp.y != 0 {
-		dest_pos := low.pos
-		dest_pos.offset += ddp
+	if !animation.is_active{
+		if ddp.x != 0 || ddp.y != 0 {
+			dest_pos := low.pos
+			dest_pos.offset += ddp
 
-		_, tile := get_chunk_and_tile(world, dest_pos)
+			_, tile := get_chunk_and_tile(world, dest_pos)
 
-		if !(is_flag_set(tile.flags, u32(tile_occoupied)) ||
-			   is_flag_set(tile.flags, u32(tile_path))) ||
-		   force {
+			open_door :=true 
+			if(is_flag_set(tile.flags, u32(tile_door))){
+				open_door = false
+				door_index :u32= 0
+				chunk := get_world_chunk(world, game_state.curr_chunk)
+				assert(tile.entities != nil)
+				curr := tile.entities
+				for curr != nil{
+					for door in chunk.doors{
+						if(curr.entity_index == door.entity_index){
+							door_index = curr.entity_index
+							open_door = door.is_open
+						}
+					}
+					curr = curr.next
+				}
+				assert(door_index != 0)
+			}
 
-			if !animation.is_active {
+			if (!(is_flag_set(tile.flags, u32(tile_occoupied)) ||
+				is_flag_set(tile.flags, u32(tile_path)))      ||
+			force ) && open_door{
+
+				//if it's door check if door is open
+
 				animation.is_active = true
 				animation.source = start_pos^
 				animation.dest = start_pos^
@@ -604,15 +658,14 @@ update_player :: proc(
 				animation.ddp = ddp
 
 				if ddp.x ==
-				   -1 {entity.face_direction = 2} else if ddp.x == 1 {entity.face_direction = 0} else if ddp.y == 1 {entity.face_direction = 1}
+				-1 {entity.face_direction = 2} else if ddp.x == 1 {entity.face_direction = 0} else if ddp.y == 1 {entity.face_direction = 1}
 
 				animation.forced = force
 				game_play_sound(game_state, AssetSound_Enum.asset_sound_jump)
 			}
 		}
 	}
-
-	if animation.is_active {
+	else {
 		if animation.completed >= 100 {
 			animation.is_active = false
 
@@ -620,12 +673,13 @@ update_player :: proc(
 			start_pos.y = libc.roundf(start_pos.y)
 
 			chunk, tile := get_chunk_and_tile(world, low.pos)
+			append_tile(game_state, tile, &platform.arena)
 
 			if !animation.forced {
-				append_tile(chunk, tile, &platform.arena)
 
 				if is_flag_set(tile.flags, u32(tile_end)) {
 					check_level_complete(game_state, chunk, entity, low)
+
 				}else if(is_flag_set(tile.flags, u32(tile_door))){
 					//Time to change level
 
@@ -640,22 +694,21 @@ update_player :: proc(
 								//we found the door. door must be found
 								camera_ddp_i32 := door.points_to.chunk_pos - game_state.curr_chunk 
 
-								entity.changed_in_between = true
-								change_entity_location(&platform.arena, world, game_state.player_index, low, door.points_to)
-
-								camera_ddp :v2_f32;
-								camera_ddp.x = f32(camera_ddp_i32.x)
-								camera_ddp.y = f32(camera_ddp_i32.y)
-								update_camera(game_state, camera_ddp)
+								if(camera_ddp_i32.x == 0 && camera_ddp_i32.y == 0){
+									offset_ddp := door.points_to.offset - low.pos.offset
+									update_player(game_state,offset_ddp, entity,low, true)
+								}else{
+									entity.changed_in_between = true
+									change_entity_location(&platform.arena, world, game_state.player_index, low, door.points_to)
+									camera_ddp :v2_f32;
+									camera_ddp.x = f32(camera_ddp_i32.x)
+									camera_ddp.y = f32(camera_ddp_i32.y)
+									update_camera(game_state, camera_ddp)
+								}
 							}
 						}
 						curr = curr.next
 					}
-
-
-
-
-
 
 				} else if is_flag_set(tile.flags, u32(tile_entity)) {
 					//go thru all the entities in the tile
@@ -724,7 +777,26 @@ update_player :: proc(
 }
 
 level_one_init :: proc(game_state: ^GameState) {
-	add_walls_around_chunk_pos(game_state, v2_i32{0, 0})
+
+	half_count :v2_f32 
+	half_count.x = (TILE_COUNT_PER_WIDTH/2 -1)
+	half_count.y = (TILE_COUNT_PER_HEIGHT/2 -1)
+
+	doors:[dynamic]v2_f32;
+	door_teleport_pos:[dynamic]WorldPosition;
+
+	defer delete_dynamic_array(doors)
+	defer delete_dynamic_array(door_teleport_pos)
+
+	append(&doors, v2_f32{half_count.x,3})
+	append(&door_teleport_pos, WorldPosition{chunk_pos={1,0}, offset={1.0,1.0}})
+
+	append(&doors, v2_f32{0,3})
+	append(&door_teleport_pos, WorldPosition{chunk_pos={0,0}, offset={1.0,1.0}})
+
+
+	add_walls_around_chunk(game_state, v2_i32{0, 0}, doors, door_teleport_pos)
+
 	add_enemy(game_state, v2_i32{0, 0}, v2_f32{-4.0, 1.0})
 	add_tree(game_state, v2_i32{0, 0}, v2_f32{4.0, -2.0})
 	add_entity_string(game_state, v2_i32{0, 0}, v2_f32{-2.0, -2.0}, "3")
@@ -732,9 +804,32 @@ level_one_init :: proc(game_state: ^GameState) {
 }
 
 level_two_init :: proc(game_state: ^GameState) {
-	chunk_pos: v2_i32 = {1, 0}
-	add_walls_around_chunk_pos(game_state, chunk_pos)
+
+	chunk_pos:=v2_i32{1,0}
+
+	half_count :v2_f32 
+	half_count.x = (TILE_COUNT_PER_WIDTH/2 -1)
+	half_count.y = (TILE_COUNT_PER_HEIGHT/2 -1)
+
+	doors:[dynamic]v2_f32;
+	door_teleport_pos:[dynamic]WorldPosition;
+
+	defer delete_dynamic_array(doors)
+	defer delete_dynamic_array(door_teleport_pos)
+
+	append(&doors, v2_f32{half_count.x,3})
+	append(&door_teleport_pos, WorldPosition{chunk_pos={0,0}, offset={1.0,1.0}})
+
+	append(&doors, v2_f32{0,3})
+	append(&door_teleport_pos, WorldPosition{chunk_pos={1,0}, offset={1.0,1.0}})
+
+
+	add_walls_around_chunk(game_state, chunk_pos, doors, door_teleport_pos)
+
 	add_enemy(game_state, chunk_pos, v2_f32{-4.0, 1.0})
+	add_tree(game_state, chunk_pos, v2_f32{4.0, -2.0})
+	add_entity_string(game_state, chunk_pos, v2_f32{-2.0, -2.0}, "3")
+	add_fire_torch(game_state, chunk_pos,v2_f32{-6.0, 3.0})
 }
 
 all_level_init :: proc(game_state: ^GameState) {
@@ -891,7 +986,7 @@ render_game :: proc(input: ^GameInput) {
 					}
 				}
 			}
-		case .entity_type_enemy: {
+			case .entity_type_enemy: {
 				low := &game_state.low_entities[entity.storage_index]
 				update_enemy(game_state, &entity, low)
 			}

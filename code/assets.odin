@@ -89,7 +89,7 @@ get_bmp_asset::proc(asset:^BmpAsset, id:BmpAsset_Enum)->^LoadedBitmap{
       case .asset_player_back:
       parse_png_to_bmp("../data/player/back.png", bitmap)
       case .asset_wall:
-      parse_png_to_bmp("../data/tex_wall.png", bitmap)
+      parse_png_to_bmp("../data/wall.png", bitmap)
       case .asset_grass:
       parse_png_to_bmp("../data/grass.png", bitmap)
       case .asset_tree:
